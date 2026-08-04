@@ -907,3 +907,187 @@ if (SERVER) {
   }, 3000);
 }
 
+const indexEl = document.getElementById("index");
+const detailEl = document.getElementById("detail");
+
+groups.forEach((g, gi) => {
+  const risk = RISK[g.risk] || RISK.low;
+  const sections = g.sections || (g.hunks ? [{ hunks: g.hunks }] : []);
+  const allHunks = sections.flatMap(s => s.hunks || []);
+  const nQuestion = allHunks.reduce(
+    (n, h) => n + (h.annotations || []).filter(a => a.type === "question").length, 0);
+
+  /* --- index card --- */
+  const li = document.createElement("li");
+  li.className = `index-card risk-${risk.cls}`;
+  li.style.animationDelay = (gi * 45) + "ms";
+  li.innerHTML = `
+    <div class="txt">
+      <div class="t">${esc(g.title)}</div>
+      <div class="s">${esc(g.intent || "")}</div>
+    </div>
+    <div class="badges">
+      ${nQuestion ? `<span class="chip question">${nQuestion} question${nQuestion === 1 ? "" : "s"}</span>` : ""}
+      ${(g.tags || []).map(t => `<span class="chip tag">${esc(t)}</span>`).join("")}
+      <span class="chip hunks">${allHunks.length} hunks</span>
+      <span class="risk-badge ${risk.cls}"><span class="dots">${risk.dots}</span>${risk.label}</span>
+    </div>`;
+  li.addEventListener("click", () => document.getElementById(g.id).scrollIntoView());
+  indexEl.appendChild(li);
+
+  /* --- detail card --- */
+  const art = document.createElement("article");
+  art.className = `group risk-${risk.cls}`;
+  art.id = g.id;
+  art.dataset.gid = g.id;
+  if (allHunks.length && allHunks.every(h => isTestFile(h.file))) {
+    art.classList.add("is-test");
+    li.classList.add("is-test");
+  }
+
+  const head = document.createElement("div");
+  head.className = "group-head";
+  head.title = "Click to collapse";
+  head.innerHTML = `
+    <span class="gcaret">▼</span>
+    <span class="risk-badge ${risk.cls}"><span class="dots">${risk.dots}</span>${risk.label}</span>
+    <h2>${esc(g.title)}</h2>`;
+  head.addEventListener("click", e => {
+    if (e.target.closest("button")) return;
+    art.classList.toggle("g-collapsed");
+  });
+  art.appendChild(head);
+
+  const intentRow = document.createElement("div");
+  intentRow.className = "intent-row prose-target";
+  const gByFile = new Map(); // file → hunk IDs within this group
+  for (const h of allHunks) {
+    if (!gByFile.has(h.file)) gByFile.set(h.file, []);
+    gByFile.get(h.file).push(h.id);
+  }
+  intentRow.innerHTML = `
+    <p class="intent"><span class="k">Intent:</span> ${esc(g.intent || "")}` +
+    (g.impact ? ` <span class="impact">— ${esc(g.impact)}</span>` : "") + `</p>
+    <div class="gtree ftree">${treeHtml(gByFile)}</div>
+    <button class="pbtn" data-act="new" data-kind="group" data-key="${esc(g.id)}"
+      title="Comment on this group (its intent, the design, …)">+</button>`;
+  art.appendChild(intentRow);
+
+  /* group comment */
+  const gcWrap = document.createElement("div");
+  gcWrap.className = "group-comment";
+  gcWrap.dataset.gcwrap = g.id;
+  art.appendChild(gcWrap);
+
+  /* sections */
+  sections.forEach((s, si) => {
+    const sDocKey = "section:" + (s.id || `${g.id}-${si}`);
+    if (s.title || s.explain) {
+      docLabels.set(sDocKey, `Explanation of “${s.title || sDocKey}”`);
+      const sh = document.createElement("div");
+      sh.className = "section-head";
+      if ((s.hunks || []).length && s.hunks.every(h => isTestFile(h.file))) sh.classList.add("is-test");
+      const files = [...new Set((s.hunks || []).map(h => h.file.split("/").pop()))];
+      sh.innerHTML = `
+        <div class="line1">
+          ${s.id ? `<span class="sid">${esc(s.id)}</span>` : ""}
+          <h3>${esc(s.title || "")}</h3>
+          <span class="files">${esc(files.slice(0, 3).join(", "))}${files.length > 3 ? ` +${files.length - 3}` : ""}</span>
+        </div>`;
+      art.appendChild(sh);
+    }
+
+  let pendingExplain = s.explain; // section explanations render as a callout at the top of the first hunk
+  for (const h of s.hunks || []) {
+    const parsed = parseHunk(h.diff || "");
+    const anchors = new Map(); // rowIndex -> [ann,...]
+    for (const a of h.annotations || []) {
+      const i = resolveAnchor(parsed.rows, a);
+      if (!anchors.has(i)) anchors.set(i, []);
+      anchors.get(i).push(a);
+    }
+
+    const sec = document.createElement("section");
+    sec.className = "hunk" + (isTestFile(h.file) ? " is-test" : "");
+    sec.id = "hunk-" + h.id;
+    const hh = document.createElement("div");
+    hh.className = "hunk-head";
+    hh.title = "Click to collapse";
+    hh.innerHTML = `<span class="caret">▼</span><span class="hid">${esc(h.id)}</span><span class="file">${esc(h.file)}</span>
+      <button class="copy-path" data-copy="${esc(h.file)}" title="Copy path">copy</button>
+      <span class="range">${esc((parsed.header || "").replace(/^@@ | @@.*$/g, m2 => m2 === "@@ " ? "" : ""))}</span>`;
+    hh.addEventListener("click", e => {
+      if (e.target.closest("button")) return;
+      sec.classList.toggle("collapsed");
+    });
+    sec.appendChild(hh);
+
+    const table = document.createElement("table");
+    table.className = "diff";
+    const tbody = document.createElement("tbody");
+    if (pendingExplain) {
+      const et = document.createElement("tr");
+      et.className = "annotation";
+      et.innerHTML = `<td class="wide" colspan="4"><div class="callout explain prose-target">
+        <span class="label">AI note</span><span>${esc(pendingExplain)}</span>
+        <button class="pbtn" data-act="new" data-kind="doc" data-key="${esc(sDocKey)}"
+          title="Comment on this explanation">+</button></div></td>`;
+      tbody.appendChild(et);
+      // Comments on this explanation render right below it
+      const ec = document.createElement("tr");
+      ec.className = "comment-slot";
+      ec.hidden = true;
+      ec.innerHTML = `<td class="wide" colspan="4" data-dcwrap="${esc(sDocKey)}"></td>`;
+      tbody.appendChild(ec);
+      pendingExplain = null;
+    }
+    parsed.rows.forEach((r, i) => {
+      const tr = document.createElement("tr");
+      tr.className = "line " + r.t;
+      const key = h.id + ":" + i;
+      tr.dataset.ckey = key;
+      const sign = r.t === "add" ? "+" : r.t === "del" ? "−" : "";
+      tr.innerHTML = `
+        <td class="ln">${r.old ?? ""}</td>
+        <td class="ln">${r.new ?? ""}</td>
+        <td class="sign">${sign}<button class="cbtn" title="Comment on this line" data-act="new" data-kind="line" data-key="${esc(key)}">+</button></td>
+        <td class="code">${esc(r.text)}</td>`;
+      tbody.appendChild(tr);
+
+      for (const a of anchors.get(i) || []) {
+        const at = document.createElement("tr");
+        at.className = "annotation";
+        at.innerHTML = `<td class="wide" colspan="4">
+          <div class="callout ${esc(a.type || "explain")}">
+            <span class="label">${ANN[a.type] || "Note"}</span><span>${esc(a.text || "")}</span>
+          </div></td>`;
+        tbody.appendChild(at);
+      }
+      const ct = document.createElement("tr");
+      ct.className = "comment-slot";
+      ct.dataset.slot = key;
+      ct.hidden = true;
+      ct.innerHTML = `<td class="wide" colspan="4"></td>`;
+      tbody.appendChild(ct);
+    });
+    table.appendChild(tbody);
+    sec.appendChild(table);
+    art.appendChild(sec);
+  }
+  });
+
+  detailEl.appendChild(art);
+});
+
+/* ---------- file tree (left sidebar) ---------- */
+(function buildFileTree() {
+  const byFile = new Map(); // file → hunk IDs in order of appearance
+  for (const g of groups)
+    for (const s of g.sections || (g.hunks ? [{ hunks: g.hunks }] : []))
+      for (const h of s.hunks || []) {
+        if (!byFile.has(h.file)) byFile.set(h.file, []);
+        byFile.get(h.file).push(h.id);
+      }
+  document.getElementById("ft-root").innerHTML = treeHtml(byFile);
+})();
+
