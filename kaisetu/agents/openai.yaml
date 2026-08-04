@@ -1,0 +1,4 @@
+interface:
+  display_name: "kaisetu"
+  short_description: "Organize a diff by intent and risk, and launch a review UI"
+  default_prompt: "Use $kaisetu to organize the current diff into a review page."
