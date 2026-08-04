@@ -1258,3 +1258,63 @@ function toggleDrawer(open) {
   document.getElementById("comment-count").classList.toggle("active", on);
 }
 
+/* ---------- summary markdown ---------- */
+function buildMarkdown() {
+  const lines = [];
+  lines.push(`# kaisetu review: ${DATA.title || ""}`);
+  lines.push(`- Scope: ${DATA.base || "-"} / plan: ${DATA.plan || "none"} / generated: ${DATA.generatedAt || "-"}`);
+  lines.push("");
+  if (DATA.tagline || DATA.overview) {
+    lines.push("## Overview");
+    if (DATA.tagline) lines.push(`**${DATA.tagline}**`, "");
+    if (DATA.overview) lines.push(DATA.overview);
+    lines.push("");
+  }
+
+  const threadLines = (key, kind) => {
+    const msgs = msgsOf(key, kind), reps = repsOf(key, kind);
+    const done = doneStore(kind)[key];
+    const flags = [done ? "resolved" : "", !done && isAwaiting(key, kind) ? "awaiting" : ""].filter(Boolean);
+    const where = kind === "line"
+      ? (m => `${m.file} ${m.line} (\`${m.code.trim()}\`)`)(commentMeta(key))
+      : kind === "group" ? `[group ${key}] ${groups.find(g => g.id === key)?.title || ""}`
+      : docLabels.get(key) || key;
+    const out = [`- ${flags.map(f => `[${f}] `).join("")}${where} \`${key}\``];
+    for (let i = 0; i < Math.max(msgs.length, reps.length); i++) {
+      if (msgs[i] != null) out.push(`  - Human: ${msgs[i].replace(/\n/g, "\n    ")}`);
+      if (reps[i] != null) out.push(`  - AI: ${reps[i].replace(/\n/g, "\n    ")}`);
+    }
+    return out;
+  };
+
+  lines.push("## Comments");
+  const all = eachThread();
+  if (!all.length) lines.push("- none");
+  for (const [key, kind] of all) lines.push(...threadLines(key, kind));
+  return lines.join("\n");
+}
+
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 1800);
+}
+
+async function copyText(text, done) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (e) {
+    // Fallback when the clipboard API is unavailable (non-http, no permission)
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+  }
+  toast(done);
+}
+
+const copySummary = () => copyText(buildMarkdown(), "Summary copied");
+
