@@ -1361,3 +1361,131 @@ async function finishReview() {
   }
 }
 
+/* ---------- theme ---------- */
+const THEME_KEY = "kaisetu:theme";
+const themeBtn = document.getElementById("theme-btn");
+const darkMedia = matchMedia("(prefers-color-scheme: dark)");
+function effectiveTheme() {
+  return document.documentElement.dataset.theme || (darkMedia.matches ? "dark" : "light");
+}
+function refreshThemeBtn() { themeBtn.textContent = effectiveTheme() === "dark" ? "☀" : "☾"; }
+themeBtn.addEventListener("click", () => {
+  const next = effectiveTheme() === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
+  refreshThemeBtn();
+});
+darkMedia.addEventListener("change", refreshThemeBtn);
+refreshThemeBtn();
+
+/* ---------- events ---------- */
+document.addEventListener("click", e => {
+  const cp = e.target.closest("[data-copy]");
+  if (cp) { copyText(cp.dataset.copy, "Copied: " + cp.dataset.copy); return; }
+  const ftName = e.target.closest(".ft-dir > .ft-name");
+  if (ftName) { ftName.parentElement.classList.toggle("closed"); return; }
+  const fj = e.target.closest("[data-file-jump]");
+  if (fj) { document.getElementById("hunk-" + fj.dataset.fileJump)?.scrollIntoView(); return; }
+  const item = e.target.closest(".drawer-item");
+  if (item && !e.target.closest("button")) {
+    const { gotoKey: key, gotoKind: kind } = item.dataset;
+    const host = key ? threadHost(key, kind) : null;
+    const target = kind === "group" ? document.getElementById(key)
+      : kind === "line" ? host?.closest("tr") : host;
+    target?.scrollIntoView({ block: "center" });
+    return;
+  }
+  const t = e.target.closest("button");
+  if (!t || !t.dataset.act) return;
+  const { act, key } = t.dataset;
+  const kind = t.dataset.kind || "line";
+  const idx = t.dataset.idx != null ? +t.dataset.idx : 0;
+  const msgs = msgStore(kind), done = doneStore(kind);
+  switch (act) {
+    case "new":
+    case "reply":
+    case "edit":
+      renderThread(key, kind, act === "edit" ? idx : msgsOf(key, kind).length);
+      break;
+    case "cancel":
+      renderThread(key, kind);
+      break;
+    case "save": {
+      const v = t.closest(".comment-editor").querySelector("textarea").value.trim();
+      const next = msgsOf(key, kind).slice();
+      if (v) next[idx] = v; else next.splice(idx, 1);   // clearing a message deletes it
+      if (next.length) msgs[key] = next; else { delete msgs[key]; delete done[key]; }
+      saveState(); renderThread(key, kind);
+      break;
+    }
+    case "del":
+      delete msgs[key]; delete done[key];
+      saveState(); renderThread(key, kind);
+      break;
+    case "resolve":
+      done[key] = true; saveState(); renderThread(key, kind);
+      break;
+    case "unresolve":
+      delete done[key]; saveState(); renderThread(key, kind);
+      break;
+  }
+});
+document.getElementById("copy-btn").addEventListener("click", copySummary);
+document.getElementById("comment-count").addEventListener("click", () => toggleDrawer());
+document.getElementById("hide-tests").addEventListener("change", e =>
+  document.body.classList.toggle("hide-tests", e.target.checked));
+document.getElementById("drawer-close").addEventListener("click", () => toggleDrawer(false));
+document.getElementById("finish-btn").addEventListener("click", finishReview);
+document.getElementById("update-apply").addEventListener("click", applyDataUpdate);
+document.getElementById("help-btn").addEventListener("click", () =>
+  document.getElementById("help-overlay").classList.add("show"));
+document.querySelectorAll(".overlay").forEach(o =>
+  o.addEventListener("click", e => { if (e.target === o) o.classList.remove("show"); }));
+
+/* keyboard: j/k group navigation, c copy */
+function currentGroupIndex() {
+  const y = 80;
+  let cur = 0;
+  groups.forEach((g, i) => {
+    const r = document.getElementById(g.id).getBoundingClientRect();
+    if (r.top <= y) cur = i;
+  });
+  return cur;
+}
+document.addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && e.target.matches(".comment-editor textarea")) {
+    e.preventDefault();
+    e.target.closest(".comment-editor").querySelector('[data-act="save"]')?.click();
+    return;
+  }
+  if (e.key === "Escape" && e.target.matches(".comment-editor textarea")) {
+    e.target.closest(".comment-editor").querySelector('[data-act="cancel"]')?.click();
+    return;
+  }
+  if (e.key === "Escape") { toggleDrawer(false); return; }
+  if (e.target.matches("textarea, input") || e.metaKey || e.ctrlKey) return;
+  if (e.key === "j" || e.key === "k") {
+    const i = currentGroupIndex() + (e.key === "j" ? 1 : -1);
+    if (groups[i]) document.getElementById(groups[i].id).scrollIntoView();
+  } else if (e.key === "c") {
+    copySummary();
+  } else if (e.key === "?") {
+    document.getElementById("help-overlay").classList.add("show");
+  }
+});
+
+/* ---------- init ---------- */
+for (const [key, kind] of eachThread()) renderThread(key, kind);
+refreshCounters();
+// Right after rebuilding to apply rewritten explanations, restore the scroll position
+{
+  const y = sessionStorage.getItem(SS_SCROLL);
+  if (y != null) { sessionStorage.removeItem(SS_SCROLL); window.scrollTo(0, +y); }
+  if (sessionStorage.getItem(SS_UPDATED)) {
+    sessionStorage.removeItem(SS_UPDATED);
+    toast("Applied the rewritten explanations");
+  }
+}
+</script>
+</body>
+</html>
