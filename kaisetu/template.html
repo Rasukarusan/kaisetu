@@ -1318,3 +1318,46 @@ async function copyText(text, done) {
 
 const copySummary = () => copyText(buildMarkdown(), "Summary copied");
 
+let sent = false;
+async function finishReview() {
+  const btn = document.getElementById("finish-btn");
+  btn.disabled = true;
+  /* Return threads with human messages and AI answers interleaved */
+  const messages = (key, kind) => {
+    const msgs = msgsOf(key, kind), reps = repsOf(key, kind), out = [];
+    for (let i = 0; i < Math.max(msgs.length, reps.length); i++) {
+      if (msgs[i] != null) out.push({ role: "human", text: msgs[i] });
+      if (reps[i] != null) out.push({ role: "ai", text: reps[i] });
+    }
+    return out;
+  };
+  const common = (key, kind) => ({
+    messages: messages(key, kind),
+    resolved: !!doneStore(kind)[key],
+    awaiting: !doneStore(kind)[key] && isAwaiting(key, kind),
+  });
+  const payload = {
+    title: DATA.title,
+    finished: true,
+    comments: eachThread().filter(([, kind]) => kind === "line")
+      .map(([key]) => ({ key, ...commentMeta(key), ...common(key, "line") })),
+    groupComments: eachThread().filter(([, kind]) => kind === "group")
+      .map(([gid]) => ({ group: gid, ...common(gid, "group") })),
+    // Comments on prose the AI wrote (overview / section explanations)
+    docComments: eachThread().filter(([, kind]) => kind === "doc")
+      .map(([key]) => ({ target: key, label: docLabels.get(key) || key, ...common(key, "doc") })),
+    markdown: buildMarkdown(),
+  };
+  try {
+    await fetch("/api/finish", { method: "POST", body: JSON.stringify(payload) });
+    toast(sent ? "Resent the updated results" : "Results sent back to the session. The page stays usable");
+    sent = true;
+    btn.classList.add("sent");
+    btn.textContent = "Finish review (resend)";
+  } catch (e) {
+    toast("Failed to send (is the server stopped?)");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
