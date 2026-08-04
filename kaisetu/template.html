@@ -825,3 +825,85 @@ function resolveAnchor(rows, ann) {
   return rows.length - 1;
 }
 
+/* ---------- render ---------- */
+document.title = (DATA.title || "kaisetu") + " — kaisetu";
+document.getElementById("title").textContent = DATA.title || "";
+const st = DATA.stats || {};
+document.getElementById("stats").innerHTML =
+  `${st.files ?? "?"} files / ${st.hunks ?? "?"} hunks <ins>+${st.additions ?? "?"}</ins> <del>−${st.deletions ?? "?"}</del>`;
+const planHtml = DATA.plan
+  ? (SERVER ? `<a href="/plan" target="_blank" title="Open the plan">${esc(DATA.plan)}</a>` : esc(DATA.plan))
+  : "none";
+document.getElementById("meta").innerHTML =
+  `<b>Scope:</b> ${esc(DATA.base || "-")} &nbsp;&nbsp;<b>plan:</b> ${planHtml} &nbsp;&nbsp;<b>Generated:</b> ${esc(DATA.generatedAt || "-")}`;
+/* Split "technical change ＝ what happens as a result" on the full-width ＝ and style the right side
+   (the plain-language outcome). Only the full-width ＝ counts, so `=` inside code is never caught */
+function splitEffect(text, block = false) {
+  const i = text.indexOf("＝");
+  if (i < 0) return esc(text);
+  const tech = esc(text.slice(0, i).trim());
+  const eff = esc(text.slice(i + 1).trim());
+  return block
+    ? `${tech}<span class="eff">＝ ${eff}</span>`
+    : `${tech}<span class="eq">＝</span><span class="eff">${eff}</span>`;
+}
+if (DATA.tagline || DATA.overview) {
+  // Show the tagline large at the top; overview lines starting with "- " become a <ul>, other lines <p>
+  let html = DATA.tagline ? `<p class="tagline">${splitEffect(DATA.tagline, true)}</p>` : "";
+  let inList = false;
+  for (const ln of String(DATA.overview || "").split("\n")) {
+    const m = ln.match(/^\s*[-・]\s*(.+)/);
+    if (m) { if (!inList) { html += "<ul>"; inList = true; } html += `<li>${splitEffect(m[1])}</li>`; }
+    else if (ln.trim()) { if (inList) { html += "</ul>"; inList = false; } html += `<p>${splitEffect(ln)}</p>`; }
+  }
+  if (inList) html += "</ul>";
+  document.getElementById("overview").innerHTML = html;
+} else {
+  document.getElementById("overview-label").hidden = true;
+  document.getElementById("overview-block").hidden = true;
+}
+if (SERVER) document.getElementById("finish-btn").hidden = false;
+
+/* Poll for AI answers and insert them into threads */
+if (SERVER) {
+  let lastReplies = "";
+  const asList = c => Array.isArray(c.replies) ? c.replies.filter(x => typeof x === "string")
+    : typeof c.text === "string" ? [c.text] : [];
+  setInterval(async () => {
+    try {
+      const txt = await (await fetch("/api/replies")).text();
+      if (txt === lastReplies) return;
+      lastReplies = txt;
+      const r = JSON.parse(txt || "{}");
+      replies.comments = Object.fromEntries((r.comments || []).map(c => [c.key, asList(c)]));
+      replies.groupComments = Object.fromEntries((r.groupComments || []).map(c => [c.group, asList(c)]));
+      replies.docComments = Object.fromEntries((r.docComments || []).map(c => [c.target, asList(c)]));
+      for (const [key, kind] of eachThread()) renderThread(key, kind);
+      refreshCounters();
+    } catch (e) {}
+  }, 3000);
+}
+
+/* Rebuild the page when review-data.json (the explanations) is rewritten.
+   Comments are restored from the server's state.json and localStorage, so nothing is lost. */
+const SS_SCROLL = "kaisetu:scroll", SS_UPDATED = "kaisetu:updated";
+function applyDataUpdate() {
+  sessionStorage.setItem(SS_SCROLL, String(window.scrollY));
+  sessionStorage.setItem(SS_UPDATED, "1");
+  location.reload();
+}
+if (SERVER) {
+  setInterval(async () => {
+    try {
+      const { version } = await (await fetch("/api/version")).json();
+      if (!version || version === VERSION) return;
+      // Rebuilding while typing would lose the draft, so ask via the bar instead
+      if (document.querySelector(".comment-editor")) {
+        document.getElementById("update-bar").classList.add("show");
+        return;
+      }
+      applyDataUpdate();
+    } catch (e) {}
+  }, 3000);
+}
+
