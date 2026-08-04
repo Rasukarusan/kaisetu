@@ -687,3 +687,59 @@ try {
 
 <div class="toast" id="toast"></div>
 
+<script id="review-data" type="application/json">__REVIEW_DATA__</script>
+<script id="review-state" type="application/json">__REVIEW_STATE__</script>
+<script>
+"use strict";
+const DATA = JSON.parse(document.getElementById("review-data").textContent);
+const SERVER = location.protocol === "http:" || location.protocol === "https:";
+const VERSION = "__REVIEW_VERSION__"; // review-data.json version (used to detect rewrites)
+
+/* ---------- state (localStorage + server autosave) ---------- */
+function fingerprint(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = (h * 33) ^ s.charCodeAt(i);
+  return (h >>> 0).toString(36);
+}
+// The localStorage key is derived from the diff structure (hunk IDs and bodies).
+// Rewriting explanations does not move comment anchors, so the key stays stable too.
+const LS_KEY = "kaisetu:" + fingerprint(JSON.stringify((DATA.groups || []).map(
+  g => [g.id, (g.sections || (g.hunks ? [{ hunks: g.hunks }] : []))
+    .map(s => (s.hunks || []).map(h => [h.id, h.diff]))])));
+// comments[key] / groupComments[gid] / docComments[target] = human message threads (string arrays, oldest first).
+// AI answers live in `replies` at the same index (replies[key][i] answers the i-th human message).
+let state = {
+  comments: {}, groupComments: {}, docComments: {},
+  resolved: {}, groupResolved: {}, docResolved: {},
+};
+let replies = { comments: {}, groupComments: {}, docComments: {} }; // AI answers (polled from /api/replies)
+// Restore from the newer of localStorage and the server-embedded state.json (compared via _savedAt)
+{
+  let localState = null, serverState = null;
+  try { localState = JSON.parse(localStorage.getItem(LS_KEY) || "null"); } catch (e) {}
+  try { serverState = JSON.parse(document.getElementById("review-state").textContent); } catch (e) {}
+  const pick = (serverState?._savedAt || 0) > (localState?._savedAt || 0)
+    ? serverState : (localState || serverState);
+  if (pick) state = Object.assign(state, pick);
+  for (const k of ["comments", "groupComments", "docComments", "resolved", "groupResolved", "docResolved"])
+    state[k] ??= {};
+  for (const store of [state.comments, state.groupComments, state.docComments])
+    for (const [k, v] of Object.entries(store)) {
+      const t = typeof v === "string" ? [v] : Array.isArray(v) ? v.filter(x => typeof x === "string" && x) : [];
+      if (t.length) store[k] = t; else delete store[k];
+    }
+}
+
+let saveTimer = null;
+function saveState() {
+  state._savedAt = Date.now();
+  localStorage.setItem(LS_KEY, JSON.stringify(state));
+  if (SERVER) {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      fetch("/api/state", { method: "POST", body: JSON.stringify(state) }).catch(() => {});
+    }, 400);
+  }
+  refreshCounters();
+}
+
