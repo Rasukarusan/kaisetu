@@ -539,3 +539,151 @@ td.wide { padding: 6px 14px 6px 4.8em; }
 .mini-btn.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
 .mini-btn.primary:hover { background: var(--blue-hover); }
 
+/* ---------- action buttons (topbar right) ---------- */
+.abtn {
+  border: 1px solid var(--border-strong); background: var(--card); color: var(--ink);
+  border-radius: 8px; padding: 6px 13px; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  white-space: nowrap; transition: background .12s;
+}
+.abtn:hover { background: var(--gray-bg); }
+.abtn.finish { background: var(--green); border-color: var(--green); color: #fff; }
+.abtn.finish:hover { background: var(--green-hover); }
+.abtn:disabled { opacity: .5; cursor: default; }
+
+/* ---------- modal / overlay ---------- */
+.overlay {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(24,27,33,.45); backdrop-filter: blur(3px);
+  display: none; align-items: center; justify-content: center; padding: 24px;
+}
+.overlay.show { display: flex; }
+.modal {
+  background: var(--card); border-radius: 14px; max-width: 480px; width: 100%;
+  padding: 26px 28px; box-shadow: 0 20px 60px rgba(20,24,33,.3);
+}
+.modal h3 { margin: 0 0 12px; font-size: 16px; }
+.modal .mono-label { font-family: var(--mono); font-size: 11px; letter-spacing: .22em; color: var(--ink-faint); margin-bottom: 8px; }
+.modal table { font-size: 13px; border-collapse: collapse; width: 100%; }
+.modal td { padding: 5px 8px 5px 0; color: var(--ink-soft); }
+.modal td.key { font-family: var(--mono); color: var(--ink); white-space: nowrap; width: 5em; }
+.modal .close-row { text-align: right; margin-top: 14px; }
+.abtn.finish.sent { background: var(--card); border-color: var(--border-strong); color: var(--ink); }
+.abtn.finish.sent:hover { background: var(--gray-bg); }
+
+/* Comments on prose (overview, intent, AI notes). Same hover + as diff lines */
+.prose-target { position: relative; }
+.pbtn {
+  position: absolute; width: 18px; height: 18px; border-radius: 5px;
+  border: 1px solid var(--blue); background: var(--blue); color: #fff;
+  font-size: 12px; line-height: 1; cursor: pointer; padding: 0;
+  opacity: 0; transition: opacity .1s;
+}
+.prose-target:hover .pbtn { opacity: 1; }
+.pbtn.has { opacity: 1; background: var(--card); color: var(--blue); }
+#overview-block .pbtn { left: -26px; top: 5px; }
+.intent-row .pbtn { left: 1px; top: 9px; width: 16px; height: 16px; }
+/* Callout cards have no left margin, so put the button at their top-right */
+.callout .pbtn { position: static; margin-left: auto; align-self: flex-start; }
+.doc-comment { margin: 10px 0 0; max-width: 880px; }
+/* Bar shown when explanations were rewritten (no auto-reload while typing; apply from here) */
+.update-bar {
+  position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(12px);
+  display: none; align-items: center; gap: 12px; z-index: 95;
+  background: var(--tip-bg); color: var(--tip-ink); border-radius: 10px; padding: 10px 14px;
+  font-size: 13px; box-shadow: 0 8px 28px rgba(20,24,33,.35);
+}
+.update-bar.show { display: flex; transform: translateX(-50%) translateY(0); }
+.update-bar .mini-btn {
+  background: transparent; color: var(--tip-ink);
+  border-color: color-mix(in srgb, var(--tip-ink) 50%, transparent);
+}
+
+.toast {
+  position: fixed; top: 62px; right: 24px; transform: translateY(-8px);
+  background: var(--tip-bg); color: var(--tip-ink); border-radius: 9px; padding: 9px 18px;
+  font-size: 13px; opacity: 0; pointer-events: none; z-index: 90;
+  transition: all .25s ease;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+</style>
+<script>
+/* Apply the saved theme before first paint to avoid a flash */
+try {
+  const t = localStorage.getItem("kaisetu:theme");
+  if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+} catch (e) {}
+</script>
+</head>
+<body class="hide-tests">
+
+<header class="topbar">
+  <span class="logo">KAISETU</span>
+  <h1 id="title"></h1>
+  <span class="stats-chip" id="stats"></span>
+  <span class="spacer"></span>
+  <label class="opt" title="Hide hunks in test files"><input type="checkbox" id="hide-tests" checked> Hide tests</label>
+  <button class="comment-count" id="comment-count" title="Open the comment list"></button>
+  <button class="abtn" id="copy-btn">Copy summary</button>
+  <button class="abtn finish" id="finish-btn" hidden title="Send the results back to the agent session">Finish review</button>
+  <button class="help-btn" id="theme-btn" title="Toggle dark mode">☾</button>
+  <button class="help-btn" id="help-btn" title="Help">?</button>
+</header>
+
+<aside class="filetree ftree" id="filetree">
+  <div class="ft-label">FILES</div>
+  <div id="ft-root"></div>
+</aside>
+
+<main>
+  <div class="sec-label" id="overview-label">00 / OVERVIEW</div>
+  <div class="prose-target" id="overview-block">
+    <div class="overview" id="overview"></div>
+    <button class="pbtn" data-act="new" data-kind="doc" data-key="overview" title="Comment on the overview">+</button>
+  </div>
+  <div class="doc-comment" data-dcwrap="overview"></div>
+
+  <div class="sec-label">01 / CHANGE GROUPS (BY RISK)</div>
+  <div class="meta-line" id="meta"></div>
+  <ol class="group-index" id="index"></ol>
+
+  <div class="sec-label">02 / GROUP DETAILS</div>
+  <div id="detail"></div>
+</main>
+
+<div class="overlay" id="help-overlay">
+  <div class="modal">
+    <div class="mono-label">HELP</div>
+    <h3>How to use</h3>
+    <table>
+      <tr><td class="key">click</td><td>Hover a diff line, the overview, an intent, or an AI note — press the + to comment</td></tr>
+      <tr><td class="key">copy</td><td>The button next to a file name copies its path</td></tr>
+      <tr><td class="key">j / k</td><td>Jump to the next / previous group</td></tr>
+      <tr><td class="key">c</td><td>Copy summary</td></tr>
+      <tr><td class="key">⌘Enter</td><td>Save while editing a comment</td></tr>
+      <tr><td class="key">Esc</td><td>Cancel comment editing / close the comment list</td></tr>
+    </table>
+    <p style="font-size:13px;color:var(--ink-soft)">Comments are saved automatically.
+    "Finish review" sends the results back to the agent session; the page stays usable after sending.
+    When a comment receives an AI answer, use "Reply" to continue the thread, then press
+    "Finish review" again to send it back. When the AI rewrites the overview or an explanation in
+    response to your comment, this page swaps in the new content automatically (your comments are kept).
+    To hand the results to another session (e.g. Codex), use "Copy summary".</p>
+    <div class="close-row"><button class="mini-btn" onclick="document.getElementById('help-overlay').classList.remove('show')">Close</button></div>
+  </div>
+</div>
+
+<aside class="drawer" id="drawer">
+  <div class="drawer-head">
+    <span class="ttl">Comments</span>
+    <button class="drawer-close" id="drawer-close" title="Close">✕</button>
+  </div>
+  <div class="drawer-list" id="drawer-list"></div>
+</aside>
+
+<div class="update-bar" id="update-bar">
+  <span>Explanations were rewritten</span>
+  <button class="mini-btn" id="update-apply">Apply to page</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
