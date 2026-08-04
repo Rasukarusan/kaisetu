@@ -56,3 +56,41 @@ language the user is conversing in.
 }
 ```
 
+## Writing the overview (tagline / overview)
+
+**Each line carries both "an explanation an engineer understands" and "an outcome a non-engineer
+understands", joined by the full-width equals sign `＝` (U+FF1D).**
+
+```
+Consolidate scattered URL building and host checks into resolveAppUrl ＝ URLs are built in one place, so missed updates can no longer cause broken links
+```
+
+- Left of `＝`: the usual technical explanation (function/module names are fine)
+- Right of `＝`: **what happens as a result**, in words for someone who doesn't read code.
+  Describe what changes for the feature, its users, or operations. No jargon, file names, or function names.
+- The tagline renders its right side as a second line; each overview line renders its right side as a
+  styled continuation.
+- The half-width `=` does NOT split (so `=` inside code is never caught). A line with no meaningful
+  outcome can omit `＝`.
+
+## Granularity guide
+
+- **group** = the intent of a change (the unit of risk assessment)
+- **section** = a coherent per-feature unit (the unit of explanation). Size it so "reading this section
+  gives you the whole change for that feature"
+- **annotation** = a line-level note. Not every hunk needs one
+
+## List metadata (meta.json)
+
+A small file `/kaisetu-list` uses for its listing. Put it next to review-data.json.
+All values are copies of the same-named fields in review-data.json (so the list never parses the full diff).
+
+```jsonc
+{
+  "title": "Review of unstaged app/system URL cleanup",
+  "tagline": "Consolidate URL building into one place",
+  "repoRoot": "/Users/me/repos/myapp",
+  "generatedAt": "2026-07-25 09:30"
+}
+```
+
