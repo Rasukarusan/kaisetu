@@ -66,10 +66,16 @@ ln -s "$(pwd)/kaisetu/kaisetu-list" ~/.claude/skills/kaisetu-list
 Restart Claude Code, then:
 
 ```
-/kaisetu               # review uncommitted changes
-/kaisetu the whole branch
-/kaisetu-list          # list and reopen past reviews
+/kaisetu                    # review uncommitted changes (git diff HEAD)
+/kaisetu the whole branch   # diff against the repo's base branch
+/kaisetu abc1234            # a single commit
+/kaisetu main..HEAD         # any revision range git understands
+/kaisetu HEAD~3..HEAD       # e.g. the last 3 commits
+/kaisetu-list               # list and reopen past reviews
 ```
+
+The scope argument is free-form: commit hashes, ranges, branch names, or plain
+words — the agent passes whatever revisions you name to `git diff`.
 
 ### Codex
 
