@@ -1091,3 +1091,114 @@ groups.forEach((g, gi) => {
   document.getElementById("ft-root").innerHTML = treeHtml(byFile);
 })();
 
+/* ---------- comments ---------- */
+function commentMeta(key) {
+  // key = hunkId:rowIndex → {file, lineLabel}
+  const [hid, idx] = [key.slice(0, key.lastIndexOf(":")), +key.slice(key.lastIndexOf(":") + 1)];
+  for (const g of groups)
+  for (const s of g.sections || (g.hunks ? [{ hunks: g.hunks }] : []))
+  for (const h of s.hunks || []) {
+    if (h.id !== hid) continue;
+    const r = parseHunk(h.diff || "").rows[idx];
+    const line = r ? (r.new != null ? "L" + r.new : "old L" + r.old) : "";
+    return { file: h.file, line, code: r ? r.raw : "" };
+  }
+  return { file: "?", line: "", code: "" };
+}
+
+/* kind = "line" (diff line) | "group" (whole group) | "doc" (rewrite request on AI-written prose).
+   key is a line key / group ID / doc target ("overview" | "group:g1" | "section:s1") */
+const STORES = {
+  line:  () => [state.comments, state.resolved, replies.comments],
+  group: () => [state.groupComments, state.groupResolved, replies.groupComments],
+  doc:   () => [state.docComments, state.docResolved, replies.docComments],
+};
+const msgStore = kind => STORES[kind]()[0];
+const doneStore = kind => STORES[kind]()[1];
+const replyStore = kind => STORES[kind]()[2];
+const msgsOf = (key, kind) => msgStore(kind)[key] || [];
+const repsOf = (key, kind) => replyStore(kind)[key] || [];
+/* Thread still ends with a human message = the AI has not answered yet */
+const isAwaiting = (key, kind) => msgsOf(key, kind).length > repsOf(key, kind).length;
+
+function threadHost(key, kind) {
+  if (kind === "group") return document.querySelector(`[data-gcwrap="${CSS.escape(key)}"]`);
+  if (kind === "doc") return document.querySelector(`[data-dcwrap="${CSS.escape(key)}"]`);
+  const slot = document.querySelector(`tr[data-slot="${CSS.escape(key)}"]`);
+  return slot ? slot.firstElementChild : null;
+}
+
+function editorHtml(key, kind, idx, value, mode) {
+  const head = mode === "edit" ? "EDIT — revise this message"
+    : mode === "reply" ? "REPLY — reply to the answer"
+    : kind === "doc" ? `COMMENT — on ${docLabels.get(key) || key}`
+    : kind === "group" ? "COMMENT — on this whole group (intent wording, design, …)" : "COMMENT — on this line";
+  const attrs = `data-kind="${kind}" data-key="${esc(key)}" data-idx="${idx}"`;
+  return `<div class="comment-editor">
+    <div class="ce-head">${head}</div>
+    <textarea placeholder="Write… (⌘Enter to save, Esc to cancel)">${esc(value || "")}</textarea>
+    <div class="ce-actions">
+      <button class="mini-btn" data-act="cancel" ${attrs}>Cancel</button>
+      <button class="mini-btn primary" data-act="save" ${attrs}>Save</button>
+    </div></div>`;
+}
+
+/* Render a thread. Pass editAt to open an editor at that index
+   (editAt === message count appends at the end = a reply) */
+function renderThread(key, kind, editAt = null) {
+  const host = threadHost(key, kind);
+  if (!host) return;
+  const slot = host.closest("tr.comment-slot");   // threads inside the table toggle their whole row
+  const msgs = msgsOf(key, kind);
+  const done = !!doneStore(kind)[key];
+  const marked = msgs.length > 0 && !done;
+  if (kind === "line")
+    document.querySelector(`tr[data-ckey="${CSS.escape(key)}"]`)?.classList.toggle("has-comment", marked);
+  else
+    document.querySelector(`.pbtn[data-kind="${kind}"][data-key="${CSS.escape(key)}"]`)
+      ?.classList.toggle("has", marked);
+  // Resolved threads are hidden on the diff (accessible only from the comment drawer)
+  if (editAt == null && (!msgs.length || done)) {
+    host.innerHTML = "";
+    if (slot) slot.hidden = true;
+    return;
+  }
+  if (slot) slot.hidden = false;
+  if (!msgs.length) {
+    // A new comment shows just the editor, without the thread frame
+    host.innerHTML = editorHtml(key, kind, 0, "", "new");
+    host.querySelector("textarea").focus();
+    return;
+  }
+  const reps = repsOf(key, kind);
+  const attrs = `data-kind="${kind}" data-key="${esc(key)}"`;
+  let body = "";
+  for (let i = 0; i < Math.max(msgs.length, reps.length, (editAt ?? -1) + 1); i++) {
+    if (i === editAt) {
+      body += `<div class="msg edit">${editorHtml(key, kind, i, msgs[i], i < msgs.length ? "edit" : "reply")}</div>`;
+    } else if (msgs[i] != null) {
+      body += `<div class="msg human">
+        <div class="mhead"><span class="who">${i === 0 ? "You" : "You (reply " + i + ")"}</span>
+          <span class="spacer"></span>
+          <button class="link-btn" data-act="edit" ${attrs} data-idx="${i}">Edit</button></div>
+        <div class="txt">${esc(msgs[i])}</div></div>`;
+    }
+    if (reps[i] != null) {
+      body += `<div class="msg ai">
+        <div class="mhead"><span class="who">AI</span></div>
+        <div class="txt">${esc(reps[i])}</div></div>`;
+    }
+  }
+  const foot = editAt != null ? "" : `<div class="cv-foot">
+    <button class="mini-btn" data-act="reply" ${attrs} data-idx="${msgs.length}">Reply</button>
+    ${isAwaiting(key, kind) ? `<span class="pending">Awaiting AI reply — press “Finish review” to send</span>` : ""}</div>`;
+  const headLabel = kind === "group" ? "Group comment" : "Comment";
+  host.innerHTML = `<div class="comment-view">
+    <div class="cv-head"><span class="label">${headLabel}</span>
+      <span class="spacer"></span>
+      <button class="link-btn" data-act="resolve" ${attrs}>✓ Resolve</button>
+      <button class="link-btn danger" data-act="del" ${attrs}>Delete</button></div>
+    ${body}${foot}</div>`;
+  host.querySelector("textarea")?.focus();
+}
+
