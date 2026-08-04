@@ -66,10 +66,16 @@ ln -s "$(pwd)/kaisetu/kaisetu-list" ~/.claude/skills/kaisetu-list
 Claude Code を再起動して:
 
 ```
-/kaisetu               # 未コミットの変更をレビュー
-/kaisetu ブランチ全体
-/kaisetu-list          # 過去のレビューを一覧・再開
+/kaisetu                    # 未コミットの変更をレビュー (git diff HEAD)
+/kaisetu ブランチ全体        # ベースブランチとの差分
+/kaisetu abc1234            # コミット単体
+/kaisetu main..HEAD         # git が理解する任意のリビジョン範囲
+/kaisetu HEAD~3..HEAD       # 例: 直近3コミット
+/kaisetu-list               # 過去のレビューを一覧・再開
 ```
+
+範囲指定は自由記述です。コミットハッシュ・範囲・ブランチ名・普通の言葉、
+どれで指定してもエージェントがそのまま `git diff` に渡します。
 
 ### Codex
 
