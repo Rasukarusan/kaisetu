@@ -94,3 +94,95 @@ All values are copies of the same-named fields in review-data.json (so the list 
 }
 ```
 
+## Answer file (review-data.replies.json)
+
+AI answers to human comments. Put it in the same directory as the review data; the page polls it every
+few seconds and shows each answer in its thread as an "AI" message (server mode only).
+
+Comments are **threads**. `replies[i]` answers the i-th (0-based) human message in that thread.
+When the human replies to an answer, the human messages grow — so **load the existing replies.json and
+append to the `replies` arrays** (removing past answers removes them from the page).
+
+```jsonc
+{
+  "comments": [
+    {
+      "key": "h081:2",            // use the key exactly as it appears in result.json comments[].key
+      "replies": [
+        "Fixed: hosts with a port number are now accepted.",     // answer to the 1st comment
+        "IPv6 is not handled yet. I can normalize via URL.hostname if needed." // answer to the reply
+      ]
+    }
+  ],
+  "groupComments": [
+    { "group": "g1", "replies": ["You're right. The design is…"] }
+  ],
+  "docComments": [
+    { "target": "overview", "replies": ["Trimmed to 3 points and moved the legacy-path item first."] }
+  ]
+}
+```
+
+## Comments on explanations
+
+Just like diff lines, the prose the AI wrote shows a `+` on hover for commenting.
+There are 3 targets:
+
+| Target | In result JSON | Field to rewrite |
+|---|---|---|
+| Overview | `docComments` with `target: "overview"` | `tagline` / `overview` |
+| Group intent | `groupComments` with `group: "<gid>"` | that group's `intent` / `impact` |
+| AI explanation (section) | `docComments` with `target: "section:<sid>"` | that section's `title` / `explain` |
+
+For "this is unclear, rewrite it" requests, **just rewrite the field in review-data.json and save**.
+The server re-reads the file and the page rebuilds (comments are preserved).
+
+**Never change `groups[].id` / `sections[].id` / the `hunks` structure.**
+Comments hang off hunk IDs and line numbers, so restructuring the diff shifts their anchors.
+
+## Result file (review-data.result.json)
+
+Written when "Finish review" is pressed. Each comment is a thread of alternating human and AI messages.
+
+```jsonc
+{
+  "title": "…",
+  "finished": true,
+  "comments": [
+    {
+      "key": "h081:2",
+      "file": "webapp/src/lib/url-config.ts",
+      "line": "L12",
+      "code": " export const userUrlMode = env.USER_URL_MODE;",
+      "messages": [
+        { "role": "human", "text": "Wouldn't this reject hosts with a port?" },
+        { "role": "ai",    "text": "Fixed: …" },
+        { "role": "human", "text": "What about IPv6?" }   // ← ends with human = unanswered
+      ],
+      "resolved": false,
+      "awaiting": true            // unresolved AND ends with a human message (= needs an answer)
+    }
+  ],
+  "groupComments": [
+    { "group": "g1", "messages": [ … ], "resolved": false, "awaiting": true }
+  ],
+  "docComments": [                // comments on prose the AI wrote (overview / section explanations)
+    { "target": "overview", "label": "Overview", "messages": [ … ], "resolved": false, "awaiting": true }
+  ],
+  "markdown": "…"                 // human-readable summary (threads as nested bullet lists)
+}
+```
+
+## Rendering rules (template behavior)
+
+- Groups are displayed in `risk` order (high → medium → low). Order them by risk in the JSON as well
+  (within the same risk, JSON order is preserved).
+- A section's `explain` is shown as an "AI explanation" callout at the top of the section's first hunk.
+- Groups containing `type: "question"` annotations get a "question" badge in the index.
+- Human comments are saved to localStorage and to the server's state.json. The localStorage key is
+  derived from the diff structure (hunk IDs and bodies), so rewriting explanations preserves comments.
+- Comments are threads. A "Reply" button appears under each AI answer so the human can continue.
+  Threads ending with a human message show "Awaiting AI reply", and the header comment counter shows
+  "awaiting N".
+- When review-data.json is rewritten, the page detects it within seconds and rebuilds (while a comment
+  is being typed, an "Apply to page" bar appears instead of rebuilding automatically).
