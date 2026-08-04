@@ -463,3 +463,79 @@ tr.line:hover td.code { box-shadow: inset 0 0 0 999px var(--row-hover); }
 tr.line:hover .cbtn, tr.line.has-comment .cbtn { opacity: 1; }
 tr.line.has-comment .cbtn { background: var(--card); color: var(--blue); }
 
+/* annotation / comment rows */
+td.wide { padding: 6px 14px 6px 4.8em; }
+.callout {
+  position: relative;
+  border: 1px solid; border-radius: 8px; padding: 8px 12px;
+  font-size: 13px; font-family: var(--sans); line-height: 1.6;
+  display: flex; gap: 9px; align-items: baseline;
+}
+.callout .label {
+  font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 5px;
+  white-space: nowrap; letter-spacing: .05em;
+}
+.callout.explain { border-color: var(--blue-border); background: var(--blue-bg); color: var(--blue-ink); }
+.callout.explain .label { background: var(--blue); color: #fff; }
+.callout.question { border-color: var(--amber-border); background: var(--amber-bg); color: var(--amber-ink); }
+.callout.question .label { background: var(--amber); color: #fff; }
+/* Comment UI: composer (header + textarea + bottom-right actions) and view card (header + body) */
+.comment-editor {
+  border: 1px solid var(--blue); border-radius: 10px; background: var(--card);
+  overflow: hidden; box-shadow: 0 1px 6px rgba(47,107,176,.12);
+}
+.comment-editor .ce-head {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .1em; font-weight: 700;
+  color: var(--blue); background: var(--blue-bg);
+  padding: 6px 12px; border-bottom: 1px solid var(--blue-border);
+}
+.comment-editor textarea {
+  display: block; width: 100%; min-height: 72px; resize: vertical; border: none;
+  padding: 10px 12px; font-family: var(--sans); font-size: 13.5px; line-height: 1.6;
+  background: var(--card); color: var(--ink);
+}
+.comment-editor textarea:focus { outline: none; }
+.comment-editor .ce-actions {
+  display: flex; justify-content: flex-end; gap: 8px;
+  padding: 8px 10px; border-top: 1px solid var(--border);
+}
+.comment-view {
+  border: 1px solid var(--amber-border); border-radius: 10px; background: var(--card);
+  overflow: hidden; font-size: 13.5px;
+}
+.comment-view .cv-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 6px 5px 10px; background: var(--comment-head-bg); border-bottom: 1px solid var(--comment-head-border);
+}
+.comment-view .label {
+  font-family: var(--mono); font-size: 11px; font-weight: 700; padding: 2px 9px;
+  border-radius: 999px; background: var(--comment-label-bg); color: #fff; white-space: nowrap;
+}
+.comment-view .cv-head .spacer { flex: 1; }
+/* Thread: human messages (msg.human) and AI answers (msg.ai) alternate */
+.comment-view .msg + .msg { border-top: 1px solid var(--border); }
+.comment-view .msg.ai { background: var(--blue-bg); color: var(--blue-ink); }
+.comment-view .msg.ai + .msg { border-top-color: var(--blue-sep); }
+.comment-view .msg.edit { padding: 8px; background: var(--soft-bg); }
+.comment-view .mhead { display: flex; align-items: center; gap: 8px; padding: 6px 8px 0 12px; }
+.comment-view .mhead .spacer { flex: 1; }
+.comment-view .who {
+  font-family: var(--mono); font-size: 10.5px; font-weight: 700;
+  letter-spacing: .08em; color: var(--ink-faint);
+}
+.comment-view .msg.ai .who { color: var(--blue); }
+.comment-view .txt { padding: 4px 12px 9px; white-space: pre-wrap; line-height: 1.65; }
+.comment-view .cv-foot {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 10px; border-top: 1px solid var(--border); background: var(--soft-bg);
+}
+.comment-view .cv-foot .pending { font-size: 11.5px; color: var(--ink-faint); }
+.drawer-item .turns { font-size: 11px; color: var(--ink-faint); margin-top: 3px; }
+.link-btn.danger { color: var(--red); }
+.mini-btn {
+  font-size: 12px; padding: 4px 12px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--border-strong); background: var(--card); color: var(--ink-soft);
+}
+.mini-btn.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+.mini-btn.primary:hover { background: var(--blue-hover); }
+
