@@ -281,3 +281,78 @@ body.hide-tests :is(.hunk.is-test, .section-head.is-test, .ft-file.is-test,
 }
 .help-btn:hover { border-color: var(--border-strong); color: var(--ink); }
 
+/* ---------- layout ---------- */
+main { max-width: 1060px; margin: 0 auto; padding: 28px 24px 64px; }
+@media (min-width: 1340px) {
+  main { margin-left: max(274px, calc((100vw - 1060px) / 2)); margin-right: auto; }
+}
+@media (max-width: 1339.98px) { .filetree { display: none; } }
+.sec-label {
+  font-family: var(--mono); font-size: 12px; letter-spacing: .22em;
+  color: var(--ink-faint); margin: 34px 0 14px;
+}
+.meta-line {
+  font-family: var(--mono); font-size: 12px; color: var(--ink-faint);
+  margin: -6px 0 16px;
+}
+.meta-line b { color: var(--ink-soft); font-weight: 600; }
+.meta-line a { color: var(--blue); text-decoration: none; }
+.meta-line a:hover { text-decoration: underline; }
+.overview {
+  font-size: 14.5px; line-height: 1.9; color: var(--ink);
+  margin: 0 0 6px; max-width: 880px;
+}
+.overview .tagline {
+  font-size: 19px; font-weight: 700; line-height: 1.5;
+  margin: 0 0 10px;
+}
+.overview ul { margin: 0; padding-left: 1.4em; }
+.overview li { margin: 2px 0; }
+.overview p { margin: 0 0 6px; }
+/* Right side of "technical change ＝ what happens as a result" (the plain-language outcome) */
+.overview .eq { color: var(--ink-faint); margin: 0 .4em; }
+.overview .eff { color: var(--ink-soft); }
+.overview .tagline .eff {
+  display: block; margin-top: 5px;
+  font-size: 14.5px; font-weight: 500; line-height: 1.7;
+}
+
+/* ---------- group index ---------- */
+.group-index { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.index-card {
+  display: flex; align-items: center; gap: 14px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  border-left: 4px solid var(--gray);
+  padding: 12px 16px; cursor: pointer;
+  box-shadow: var(--shadow);
+  transition: transform .12s ease, border-color .12s ease;
+  animation: rise .4s ease backwards;
+}
+.index-card:hover { transform: translateY(-1px); border-color: var(--border-strong); }
+.index-card.risk-high { border-left-color: var(--risk-high); }
+.index-card.risk-medium { border-left-color: var(--risk-medium); }
+.index-card.risk-low { border-left-color: var(--risk-low); }
+.index-card .txt { flex: 1; min-width: 0; }
+.index-card .t { font-weight: 700; font-size: 14.5px; }
+.index-card .s {
+  color: var(--ink-soft); font-size: 13px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.index-card .badges { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+
+/* ---------- badges / chips ---------- */
+.chip {
+  display: inline-block; font-size: 12px; line-height: 1;
+  padding: 4px 8px; border-radius: 6px; font-weight: 600;
+}
+.chip.mono { font-family: var(--mono); font-weight: 500; }
+.chip.tag { background: var(--card); border: 1px solid var(--border); color: var(--ink-soft); font-family: var(--mono); font-weight: 500; }
+.chip.hunks { color: var(--ink-soft); font-family: var(--mono); font-weight: 500; padding: 4px 2px; }
+.chip.question { color: var(--amber); font-weight: 700; padding: 4px 2px; }
+.risk-badge { font-size: 12px; padding: 4px 9px; border-radius: 6px; font-weight: 700; white-space: nowrap; }
+.risk-badge .dots { font-size: 8.5px; letter-spacing: 1px; vertical-align: 1px; margin-right: 4px; }
+.risk-badge.high { background: var(--risk-high); color: var(--risk-high-ink); }
+.risk-badge.medium { background: var(--risk-medium-bg); color: var(--risk-medium-ink); }
+.risk-badge.low { background: var(--gray-bg); color: var(--ink-faint); }
+
