@@ -1202,3 +1202,59 @@ function renderThread(key, kind, editAt = null) {
   host.querySelector("textarea")?.focus();
 }
 
+/* ---------- counters / drawer ---------- */
+/* Enumerate commented threads as [key, kind] (docs → groups → lines) */
+function eachThread() {
+  const out = [];
+  for (const key of Object.keys(state.docComments)) if (msgsOf(key, "doc").length) out.push([key, "doc"]);
+  for (const g of groups) if (msgsOf(g.id, "group").length) out.push([g.id, "group"]);
+  for (const key of Object.keys(state.comments)) if (msgsOf(key, "line").length) out.push([key, "line"]);
+  return out;
+}
+
+/* Human-readable location of a thread */
+function threadWhere(key, kind) {
+  if (kind === "doc") return docLabels.get(key) || key;
+  if (kind === "group") return "Group: " + (groups.find(g => g.id === key)?.title || key);
+  const m = commentMeta(key);
+  return `${m.file} ${m.line}`;
+}
+
+function refreshCounters() {
+  const all = eachThread();
+  const nResolved = all.filter(([k, kind]) => doneStore(kind)[k]).length;
+  const nAwaiting = all.filter(([k, kind]) => !doneStore(kind)[k] && isAwaiting(k, kind)).length;
+  const extra = [nAwaiting ? `awaiting ${nAwaiting}` : "", nResolved ? `resolved ${nResolved}` : ""].filter(Boolean);
+  document.getElementById("comment-count").textContent =
+    `Comments: ${all.length}` + (extra.length ? ` (${extra.join(" / ")})` : "");
+  if (document.getElementById("drawer").classList.contains("open")) renderDrawer();
+}
+
+function renderDrawer() {
+  const list = document.getElementById("drawer-list");
+  const items = eachThread().map(([key, kind]) => {
+    const msgs = msgsOf(key, kind), reps = repsOf(key, kind);
+    const done = !!doneStore(kind)[key];
+    const where = threadWhere(key, kind);
+    const turns = [
+      msgs.length > 1 ? `replies ${msgs.length - 1}` : "",
+      reps.length ? `answers ${reps.length}` : "",
+      !done && isAwaiting(key, kind) ? "awaiting" : "",
+    ].filter(Boolean).join(" / ");
+    return `<div class="drawer-item${done ? " resolved" : ""}" data-goto-kind="${kind}" data-goto-key="${esc(key)}">
+      <div class="where"><span class="w">${done ? "✓ " : ""}${esc(where)}</span>
+        ${done ? `<button class="link-btn" data-act="unresolve" data-kind="${kind}" data-key="${esc(key)}">Reopen</button>` : ""}</div>
+      <div class="body">${esc(msgs[msgs.length - 1])}</div>
+      ${turns ? `<div class="turns">${esc(turns)}</div>` : ""}</div>`;
+  });
+  list.innerHTML = items.length ? items.join("") : `<div class="drawer-empty">No comments yet</div>`;
+}
+
+function toggleDrawer(open) {
+  const drawer = document.getElementById("drawer");
+  const on = open ?? !drawer.classList.contains("open");
+  if (on) renderDrawer();
+  drawer.classList.toggle("open", on);
+  document.getElementById("comment-count").classList.toggle("active", on);
+}
+
