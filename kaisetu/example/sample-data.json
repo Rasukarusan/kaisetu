@@ -1,0 +1,138 @@
+{
+  "title": "Review of unstaged app/system URL cleanup",
+  "tagline": "Consolidate scattered URL building into one place ＝ prepares the domain migration so links and logins never break",
+  "overview": "- Consolidate scattered URL building and host checks into resolveAppUrl / isLegacyHost ＝ URLs are built in one place, so missed updates can no longer cause broken links\n- Route both deployment modes (subdomain / legacy-path) through the same code path ＝ customers on the new domain and the old domain now behave identically\n- Replace relative links in shared UI, dashboard, and settings with absolute URLs ＝ every page lands on the correct domain no matter where you navigate from\n- Update the architecture docs and migration plan to the current separation of concerns ＝ anyone reading the migration guide sees docs that match reality",
+  "generatedAt": "2026-07-25 09:30",
+  "base": "unstaged (git diff HEAD)",
+  "plan": "plans/url-cleanup.md",
+  "stats": {
+    "files": 107,
+    "hunks": 268,
+    "additions": 1468,
+    "deletions": 812
+  },
+  "groups": [
+    {
+      "id": "g1",
+      "title": "Shared URL / host-check foundation",
+      "intent": "Consolidate per-deployment-mode URL building and host checks into one place, so legacy-path and subdomain modes can be switched safely.",
+      "impact": "Foundation code also used on the legacy path, so the blast radius is wide.",
+      "risk": "high",
+      "tags": [
+        "refactor"
+      ],
+      "sections": [
+        {
+          "id": "s1",
+          "title": "New shared entry point resolveAppUrl",
+          "explain": "URL building that used to be scattered across call sites is consolidated into resolveAppUrl in url-config.ts. It is a two-way branch: https://{service}.{APEX_DOMAIN} when userUrlMode is 'subdomain', otherwise {SITE_ROOT}/{service}. This is the core change for the plan's \"consolidate URL building\" item.",
+          "hunks": [
+            {
+              "id": "h080",
+              "file": "webapp/src/lib/url-config.ts",
+              "diff": "@@ -12,4 +12,12 @@\n export const userUrlMode = env.USER_URL_MODE;\n \n+export function resolveAppUrl(service: string): string {\n+  if (userUrlMode === 'subdomain') {\n+    return `https://${service}.${env.APEX_DOMAIN}`;\n+  }\n+  return `${env.SITE_ROOT}/${service}`;\n+}\n+\n export function buildUserUrl(name: string): string {",
+              "annotations": [
+                {
+                  "type": "question",
+                  "match": "service: string",
+                  "text": "What values `service` can take ('app' | 'system' only?) is not stated in the plan and cannot be inferred from the type."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "s2",
+          "title": "Stricter isLegacyHost check",
+          "explain": "A separate change in the same url-config.ts. The host check moves from substring matching (includes) to exact equality (===). This reads as a guard against spoofed hosts like legacy.example.com.evil.com after the subdomain migration, but as a side effect it also changes how hosts with port numbers are treated.",
+          "hunks": [
+            {
+              "id": "h081",
+              "file": "webapp/src/lib/url-config.ts",
+              "diff": "@@ -28,3 +36,3 @@\n export function isLegacyHost(host: string): boolean {\n-  return host.includes(env.LEGACY_HOST);\n+  return host === env.LEGACY_HOST;\n }",
+              "annotations": [
+                {
+                  "type": "question",
+                  "match": "host === env.LEGACY_HOST",
+                  "text": "Exact matching now rejects hosts with a port number such as localhost:3000. Whether this is intentional cannot be determined from the plan."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "s3",
+          "title": "Test updates",
+          "explain": "The auth tests are rewritten to assume the new resolveAppUrl. The vi.mock module replacement is gone — the tests now call the real resolveAppUrl, so they exercise the actual branching logic.",
+          "hunks": [
+            {
+              "id": "h079",
+              "file": "webapp/src/lib/auth.subdomain.test.ts",
+              "diff": "@@ -1,10 +1,13 @@\n import Cookies from 'js-cookie';\n+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';\n \n-import { saveShouldFetchCurrentUser } from './auth';\n-\n-vi.mock('./user-url-config', () => ({\n-  userUrlMode: 'subdomain',\n-}));\n+import { resolveAppUrl } from './url-config';\n+import { saveShouldFetchCurrentUser } from './auth';\n \n describe('auth subdomain', () => {\n+  const host = resolveAppUrl('app');",
+              "annotations": [
+                {
+                  "type": "explain",
+                  "match": "import { afterEach",
+                  "text": "Moves from vitest's global injection to explicit imports."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g2",
+      "title": "Absolute URLs for app/system links",
+      "intent": "Replaces relative paths in shared UI, dashboard, settings, and sponsors with app apex URLs.",
+      "risk": "medium",
+      "tags": [
+        "refactor"
+      ],
+      "sections": [
+        {
+          "id": "s4",
+          "title": "Bulk replacement of navigation links",
+          "explain": "The same-shaped change — relative href paths replaced with resolveAppUrl-based absolute URLs — appears across 96 hunks. All are mechanical replacements; only one representative hunk from Nav is shown here.",
+          "hunks": [
+            {
+              "id": "h101",
+              "file": "webapp/src/components/Nav.tsx",
+              "diff": "@@ -8,7 +8,7 @@\n export function Nav() {\n   return (\n     <nav>\n-      <a href=\"/dashboard\">Dashboard</a>\n+      <a href={resolveAppUrl('app') + '/dashboard'}>Dashboard</a>\n     </nav>\n   );\n }"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g3",
+      "title": "Architecture docs and migration plan updates",
+      "intent": "Updates the architecture doc and migration plan to the current separation of concerns.",
+      "risk": "low",
+      "tags": [
+        "docs"
+      ],
+      "sections": [
+        {
+          "id": "s5",
+          "title": "Rewritten URL design section",
+          "explain": "The URL design section of architecture.md is updated from the relative-path assumption to the resolveAppUrl approach.",
+          "hunks": [
+            {
+              "id": "h250",
+              "file": "docs/architecture.md",
+              "diff": "@@ -20,4 +20,5 @@\n ## URL design\n \n-Use relative paths.\n+Generate absolute URLs with resolveAppUrl according to the deployment mode.\n+Migration is complete.",
+              "annotations": [
+                {
+                  "type": "question",
+                  "match": "Migration is complete",
+                  "text": "Three unconverted relative links remain under sponsors/ — worth confirming whether \"complete\" matches reality."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
