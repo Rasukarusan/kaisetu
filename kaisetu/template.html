@@ -743,3 +743,85 @@ function saveState() {
   refreshCounters();
 }
 
+/* ---------- data prep ---------- */
+const RISK = {
+  high:   { rank: 0, label: "High",   cls: "high",   dots: "●●●" },
+  medium: { rank: 1, label: "Medium", cls: "medium", dots: "●●○" },
+  low:    { rank: 2, label: "Low",    cls: "low",    dots: "●○○" },
+};
+const isTestFile = f => /(\.test\.|\.spec\.|_test\.|__tests__|(^|\/)tests?\/)/.test(f);
+
+/* Build file-tree HTML from byFile (Map: file → hunk IDs). Shared by the sidebar and per-group mini tree */
+function treeHtml(byFile) {
+  const root = {};
+  for (const file of [...byFile.keys()].sort()) {
+    const parts = file.split("/");
+    let node = root;
+    parts.forEach((p, i) => {
+      if (i === parts.length - 1) (node.files ??= []).push({ name: p, file });
+      else node = (node.dirs ??= {})[p] ??= {};
+    });
+  }
+  const render = node => {
+    let html = "<ul>";
+    for (let [name, child] of Object.entries(node.dirs || {})) {
+      // Collapse single-child directory chains (a > b > c → a/b/c)
+      while (child.dirs && Object.keys(child.dirs).length === 1 && !(child.files || []).length) {
+        const k = Object.keys(child.dirs)[0];
+        name += "/" + k;
+        child = child.dirs[k];
+      }
+      html += `<li class="ft-dir"><div class="ft-name"><span class="caret">▼</span>${esc(name)}</div>${render(child)}</li>`;
+    }
+    for (const f of node.files || []) {
+      const ids = byFile.get(f.file);
+      html += `<li class="ft-file${isTestFile(f.file) ? " is-test" : ""}" data-file-jump="${esc(ids[0])}" title="${esc(f.file)}">
+        <span class="n">${esc(f.name)}</span>
+        <button class="copy-path" data-copy="${esc(f.file)}" title="Copy path">copy</button>
+        <span class="cnt">${ids.length}</span></li>`;
+    }
+    return html + "</ul>";
+  };
+  return render(root);
+}
+const ANN = { explain: "Note", question: "Question" };
+/* Rewrite-request target → display name. Group/section entries are registered while rendering */
+const docLabels = new Map([["overview", "Overview"]]);
+
+const groups = [...(DATA.groups || [])].sort(
+  (a, b) => (RISK[a.risk]?.rank ?? 9) - (RISK[b.risk]?.rank ?? 9)
+);
+
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+/* Parse a unified diff hunk. The first line is the @@ header */
+function parseHunk(text) {
+  const lines = String(text).replace(/\n$/, "").split("\n");
+  let header = "", body = lines;
+  if (lines[0] && lines[0].startsWith("@@")) { header = lines[0]; body = lines.slice(1); }
+  const m = /@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(header);
+  let oldN = m ? +m[1] : 1, newN = m ? +m[2] : 1;
+  const rows = [];
+  for (const raw of body) {
+    const t = raw[0] === "+" ? "add" : raw[0] === "-" ? "del" : raw[0] === "\\" ? "meta" : "ctx";
+    const row = { t, text: raw.slice(1), raw, old: null, new: null };
+    if (t === "ctx") { row.old = oldN++; row.new = newN++; }
+    else if (t === "add") { row.new = newN++; }
+    else if (t === "del") { row.old = oldN++; }
+    rows.push(row);
+  }
+  return { header, rows };
+}
+
+/* Resolve an annotation's anchor row index (0-based within the hunk body) */
+function resolveAnchor(rows, ann) {
+  if (ann.match) {
+    const i = rows.findIndex(r => r.t !== "meta" && r.text.includes(ann.match));
+    if (i >= 0) return i;
+  }
+  if (Number.isInteger(ann.line) && ann.line >= 1 && ann.line <= rows.length) return ann.line - 1;
+  return rows.length - 1;
+}
+
