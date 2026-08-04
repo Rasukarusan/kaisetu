@@ -1,0 +1,6 @@
+__pycache__/
+.DS_Store
+*.result.json
+*.state.json
+*.replies.json
+kaisetu/example/sample-data.html
