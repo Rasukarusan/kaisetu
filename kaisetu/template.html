@@ -482,7 +482,11 @@ body.split main { max-width: 1400px; }
   font-size: 12px; line-height: 1; cursor: pointer; padding: 0;
   opacity: 0; transition: opacity .1s;
 }
-tr.line:hover .cbtn, .has-comment .cbtn { opacity: 1; }
+body:not(.split) tr.line:hover .cbtn, .has-comment .cbtn { opacity: 1; }
+/* Split view: a row holds two lines, so only the side under the cursor offers its + */
+body.split td.sign:hover .cbtn,
+body.split td.ln:hover + td.sign .cbtn,
+body.split td.sign:has(+ td.code:hover) .cbtn { opacity: 1; }
 .has-comment .cbtn { background: var(--card); color: var(--blue); }
 /* In split view the marker lands on the commented cell, not the whole row */
 body.split td.code.has-comment { box-shadow: inset 2px 0 0 var(--blue); }
