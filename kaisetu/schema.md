@@ -222,9 +222,10 @@ Written when "Finish review" is pressed. Each comment is a thread of alternating
   In HTML review mode it comes from the reviewed page's path, so fixing the page preserves them too.
 - HTML review mode: elements are anchored by CSS selector, falling back to their text when the page
   changed. Commented elements get numbered pins over the page, and threads sit in a right-hand column in
-  page order. Resolving a thread folds its card down to the anchor line plus a one-line preview (click the
-  caret to unfold it, then "↺ Reopen"). Turning off "Comment mode" (`p`) lets the
-  human use the page normally (links, buttons).
+  page order — the header's comment counter toggles that column (there is no separate drawer; the pin and
+  the number badge jump between page and thread). Clicking a card's header folds the thread; resolved
+  threads start folded, showing the anchor line plus a one-line preview. Turning off "Comment mode" (`p`)
+  hides the pins and lets the human use the page normally (links, buttons).
 - Comments are threads. A "Reply" button appears under each AI answer so the human can continue.
   Threads ending with a human message show "Awaiting AI reply", and the header comment counter shows
   "awaiting N".
