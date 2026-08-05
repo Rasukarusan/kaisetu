@@ -600,6 +600,82 @@ td.wide { padding: 6px 14px 6px 4.8em; }
   border-color: color-mix(in srgb, var(--tip-ink) 50%, transparent);
 }
 
+/* ---------- HTML review mode (comment on the rendered page itself) ---------- */
+body.mode-html .diff-only, body:not(.mode-html) .html-only { display: none; }
+body.mode-html main { display: none; }
+.htmlview { display: flex; align-items: stretch; height: calc(100vh - 53px); }
+.preview { position: relative; flex: 1; min-width: 0; background: var(--surface-3); }
+.preview iframe { display: block; width: 100%; height: 100%; border: 0; background: #fff; }
+.preview.picking iframe { cursor: crosshair; }
+/* Overlay above the iframe: hover outline and numbered pins. The reviewed page's DOM is never touched */
+.pins { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.hl {
+  position: absolute; display: none;
+  border: 2px solid var(--blue); background: rgba(47, 107, 176, .08); border-radius: 3px;
+}
+.hl.show { display: block; }
+.hl .tag {
+  position: absolute; left: -2px; top: -19px; white-space: nowrap;
+  font-family: var(--mono); font-size: 10.5px; line-height: 1;
+  background: var(--blue); color: #fff; padding: 4px 6px; border-radius: 4px 4px 0 0;
+}
+.pin {
+  position: absolute; pointer-events: auto;
+  min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px;
+  border: 1px solid var(--blue); background: var(--blue); color: #fff;
+  font-family: var(--mono); font-size: 11px; line-height: 1; cursor: pointer;
+  box-shadow: 0 1px 5px rgba(20, 24, 33, .35);
+}
+.pin.done { background: var(--card); color: var(--green); border-color: var(--green); }
+.pin.current { box-shadow: 0 0 0 3px var(--blue-bg), 0 1px 5px rgba(20, 24, 33, .35); }
+.pick-hint {
+  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+  background: var(--tip-bg); color: var(--tip-ink); border-radius: 8px; padding: 6px 12px;
+  font-size: 12px; opacity: .88; pointer-events: none;
+}
+.threadcol {
+  width: 380px; max-width: 46vw; flex: none;
+  display: flex; flex-direction: column;
+  border-left: 1px solid var(--border); background: var(--card);
+}
+.tc-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 11px 14px; border-bottom: 1px solid var(--border);
+}
+.tc-head .ttl { font-size: 14px; font-weight: 700; flex: 1; }
+.tc-list { flex: 1; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; }
+.tc-empty { color: var(--ink-faint); font-size: 13px; text-align: center; margin-top: 36px; line-height: 1.9; }
+.tcard { scroll-margin: 12px; }
+.tc-anchor {
+  display: flex; align-items: baseline; gap: 7px; margin-bottom: 5px;
+  font-family: var(--mono); font-size: 11px; color: var(--ink-faint); cursor: pointer;
+}
+.tc-anchor:hover .lbl { color: var(--ink); }
+.tc-anchor .num {
+  flex: none; min-width: 17px; padding: 0 4px; border-radius: 9px;
+  background: var(--blue); color: #fff;
+  font-size: 10.5px; line-height: 17px; text-align: center;
+}
+.tc-anchor .caret {
+  flex: none; display: inline-block; width: 12px; padding: 0;
+  border: none; background: none; cursor: pointer;
+  font-size: 8.5px; color: var(--ink-faint); transition: transform .12s;
+}
+.tc-anchor .caret:hover { color: var(--ink); }
+/* Resolved threads collapse to their anchor line plus a one-line preview */
+.tcard.resolved { opacity: .72; }
+.tcard.resolved:hover { opacity: 1; }
+.tcard.resolved .tc-anchor .num { background: var(--gray-bg); color: var(--green); }
+.tcard.collapsed .tc-anchor .caret { transform: rotate(-90deg); }
+.tcard.collapsed [data-elwrap] { display: none; }
+.tc-preview {
+  padding-left: 31px; font-size: 12.5px; color: var(--ink-faint); cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tc-anchor .lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tc-anchor .lost { color: var(--red); }
+.tcard.current .tc-anchor .lbl { color: var(--blue); }
+
 .toast {
   position: fixed; top: 62px; right: 24px; transform: translateY(-8px);
   background: var(--tip-bg); color: var(--tip-ink); border-radius: 9px; padding: 9px 18px;
@@ -623,7 +699,8 @@ try {
   <h1 id="title"></h1>
   <span class="stats-chip" id="stats"></span>
   <span class="spacer"></span>
-  <label class="opt" title="Hide hunks in test files"><input type="checkbox" id="hide-tests" checked> Hide tests</label>
+  <label class="opt diff-only" title="Hide hunks in test files"><input type="checkbox" id="hide-tests" checked> Hide tests</label>
+  <label class="opt html-only" title="Click an element in the page to comment on it (turn off to use the page normally)"><input type="checkbox" id="pick-mode" checked> Comment mode</label>
   <button class="comment-count" id="comment-count" title="Open the comment list"></button>
   <button class="abtn" id="copy-btn">Copy summary</button>
   <button class="abtn finish" id="finish-btn" hidden title="Send the results back to the agent session">Finish review</button>
@@ -631,7 +708,7 @@ try {
   <button class="help-btn" id="help-btn" title="Help">?</button>
 </header>
 
-<aside class="filetree ftree" id="filetree">
+<aside class="filetree ftree diff-only" id="filetree">
   <div class="ft-label">FILES</div>
   <div id="ft-root"></div>
 </aside>
@@ -652,18 +729,42 @@ try {
   <div id="detail"></div>
 </main>
 
+<!-- HTML review mode: the reviewed page on the left, its comment threads on the right -->
+<div class="htmlview html-only" id="htmlview">
+  <div class="preview" id="preview">
+    <iframe id="target-frame" title="Reviewed page"></iframe>
+    <div class="pins" id="pins">
+      <div class="hl" id="hl"><span class="tag"></span></div>
+    </div>
+    <div class="pick-hint" id="pick-hint">Click any part of the page to comment on it</div>
+  </div>
+  <aside class="threadcol">
+    <div class="tc-head">
+      <span class="ttl">Comments</span>
+      <button class="mini-btn" id="page-comment-btn" title="Comment on the page as a whole">On the whole page</button>
+    </div>
+    <div class="tc-list" id="tc-list"></div>
+  </aside>
+</div>
+
 <div class="overlay" id="help-overlay">
   <div class="modal">
     <div class="mono-label">HELP</div>
     <h3>How to use</h3>
     <table>
-      <tr><td class="key">click</td><td>Hover a diff line, the overview, an intent, or an AI note — press the + to comment</td></tr>
-      <tr><td class="key">copy</td><td>The button next to a file name copies its path</td></tr>
-      <tr><td class="key">j / k</td><td>Jump to the next / previous group</td></tr>
+      <tr class="diff-only"><td class="key">click</td><td>Hover a diff line, the overview, an intent, or an AI note — press the + to comment</td></tr>
+      <tr class="diff-only"><td class="key">copy</td><td>The button next to a file name copies its path</td></tr>
+      <tr class="diff-only"><td class="key">j / k</td><td>Jump to the next / previous group</td></tr>
+      <tr class="html-only"><td class="key">click</td><td>Click any element in the page to comment on it</td></tr>
+      <tr class="html-only"><td class="key">pin</td><td>A numbered pin marks each commented element; click a pin or a comment to jump between them</td></tr>
+      <tr class="html-only"><td class="key">p</td><td>Toggle comment mode (turn it off to click links and buttons in the page)</td></tr>
       <tr><td class="key">c</td><td>Copy summary</td></tr>
       <tr><td class="key">⌘Enter</td><td>Save while editing a comment</td></tr>
       <tr><td class="key">Esc</td><td>Cancel comment editing / close the comment list</td></tr>
     </table>
+    <p class="html-only" style="font-size:13px;color:var(--ink-soft)">Comments are anchored to the element
+    you clicked. When the AI fixes the HTML, this page reloads with the new render within seconds and your
+    comments stay put (an element that no longer exists is marked "anchor lost").</p>
     <p style="font-size:13px;color:var(--ink-soft)">Comments are saved automatically.
     "Finish review" sends the results back to the agent session; the page stays usable after sending.
     When a comment receives an AI answer, use "Reply" to continue the thread, then press
