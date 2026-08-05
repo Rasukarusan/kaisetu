@@ -73,6 +73,30 @@ Consolidate scattered URL building and host checks into resolveAppUrl ＝ URLs a
 - The half-width `=` does NOT split (so `=` inside code is never caught). A line with no meaningful
   outcome can omit `＝`.
 
+## HTML review mode
+
+When `html` is set, the reviewed target is that HTML file itself. The page renders it in an iframe and
+the human comments on its elements — no groups, no explanations.
+
+```jsonc
+{
+  "title": "Review of the release notes page",
+  "html": "docs/release-notes.html",   // reviewed file: absolute, or relative to the server CWD / this file
+  "generatedAt": "2026-08-05 10:00",
+  "repoRoot": "/Users/me/repos/myapp"
+}
+```
+
+- All diff-review fields (`groups`, `overview`, `tagline`, `stats`, `base`, `plan`) are omitted.
+- Files sitting next to the HTML (CSS, JS, images) are served, so relative links work.
+- Rewriting the HTML file bumps the version, so the page reloads with the new render within seconds;
+  comments stay anchored to their elements.
+- `htmlInline` is added by `serve.py --build` only (it embeds the page for the static, server-less HTML).
+  Never write it by hand.
+
+Comments are anchored to a CSS selector (`body > main > p:nth-of-type(1)`), with the element's text kept
+as a fallback anchor for when the page changes. `key: "page"` is a comment on the page as a whole.
+
 ## Granularity guide
 
 - **group** = the intent of a change (the unit of risk assessment)
@@ -119,6 +143,9 @@ append to the `replies` arrays** (removing past answers removes them from the pa
   ],
   "docComments": [
     { "target": "overview", "replies": ["Trimmed to 3 points and moved the legacy-path item first."] }
+  ],
+  "elementComments": [                  // HTML review mode
+    { "key": "body > main > p:nth-of-type(1)", "replies": ["Fixed: replaced the jargon with plain wording."] }
   ]
 }
 ```
@@ -169,6 +196,17 @@ Written when "Finish review" is pressed. Each comment is a thread of alternating
   "docComments": [                // comments on prose the AI wrote (overview / section explanations)
     { "target": "overview", "label": "Overview", "messages": [ … ], "resolved": false, "awaiting": true }
   ],
+  "elementComments": [            // HTML review mode: comments on elements of the reviewed page
+    {
+      "key": "body > main > p:nth-of-type(1)",
+      "selector": "body > main > p:nth-of-type(1)",   // null = a comment on the whole page (key "page")
+      "label": "p “The checkout flow now confirms payment in a …”",
+      "text": "The checkout flow now confirms payment in a single step. …",  // text at comment time
+      "anchored": true,           // false = that element no longer exists in the current HTML
+      "messages": [ … ], "resolved": false, "awaiting": true
+    }
+  ],
+  "html": "docs/release-notes.html",   // reviewed page (null in diff mode)
   "markdown": "…"                 // human-readable summary (threads as nested bullet lists)
 }
 ```
@@ -181,6 +219,12 @@ Written when "Finish review" is pressed. Each comment is a thread of alternating
 - Groups containing `type: "question"` annotations get a "question" badge in the index.
 - Human comments are saved to localStorage and to the server's state.json. The localStorage key is
   derived from the diff structure (hunk IDs and bodies), so rewriting explanations preserves comments.
+  In HTML review mode it comes from the reviewed page's path, so fixing the page preserves them too.
+- HTML review mode: elements are anchored by CSS selector, falling back to their text when the page
+  changed. Commented elements get numbered pins over the page, and threads sit in a right-hand column in
+  page order. Resolving a thread folds its card down to the anchor line plus a one-line preview (click the
+  caret to unfold it, then "↺ Reopen"). Turning off "Comment mode" (`p`) lets the
+  human use the page normally (links, buttons).
 - Comments are threads. A "Reply" button appears under each AI answer so the human can continue.
   Threads ending with a human message show "Awaiting AI reply", and the header comment counter shows
   "awaiting N".
