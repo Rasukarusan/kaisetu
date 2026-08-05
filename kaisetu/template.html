@@ -446,7 +446,9 @@ td.ln {
   color: var(--ink-faint); user-select: none; font-size: 11.5px;
   background: var(--surface-2); border-right: 1px solid var(--border);
 }
-td.sign { width: 1.6em; text-align: center; user-select: none; color: var(--ink-faint); position: relative; }
+/* min-width matters in split view: the two 50% code columns would otherwise squeeze
+   this cell narrower than the comment button that sits in it */
+td.sign { width: 1.6em; min-width: 1.6em; text-align: center; user-select: none; color: var(--ink-faint); position: relative; }
 td.code { white-space: pre-wrap; word-break: break-all; padding-right: 16px; }
 tr.add td.code, tr.add td.sign { background: var(--add-bg); }
 tr.add td.sign { color: var(--green); }
@@ -454,7 +456,25 @@ tr.add td.ln { background: var(--add-gutter); border-right-color: var(--add-gutt
 tr.del td.code, tr.del td.sign { background: var(--del-bg); }
 tr.del td.sign { color: var(--red); }
 tr.del td.ln { background: var(--del-gutter); border-right-color: var(--del-gutter-border); }
-tr.line:hover td.code { box-shadow: inset 0 0 0 999px var(--row-hover); }
+body:not(.split) tr.line:hover td.code { box-shadow: inset 0 0 0 999px var(--row-hover); }
+
+/* ---------- split (side-by-side) diff: old on the left, new on the right ---------- */
+/* Colours live on the cells here, not the row, since the two sides differ */
+body.split td.code { width: 50%; }
+body.split td.code:hover { box-shadow: inset 0 0 0 999px var(--row-hover); }
+td.gap { border-left: 1px solid var(--border-strong); }
+td.s-add.code, td.s-add.sign { background: var(--add-bg); }
+td.s-add.sign { color: var(--green); }
+td.s-add.ln { background: var(--add-gutter); border-right-color: var(--add-gutter-border); }
+td.s-del.code, td.s-del.sign { background: var(--del-bg); }
+td.s-del.sign { color: var(--red); }
+td.s-del.ln { background: var(--del-gutter); border-right-color: var(--del-gutter-border); }
+/* No counterpart on this side (a pure addition or deletion) */
+td.s-empty { background: var(--surface-3); }
+body.split main { max-width: 1400px; }
+@media (min-width: 1340px) {
+  body.split main { margin-left: max(274px, calc((100vw - 1400px) / 2)); }
+}
 .cbtn {
   position: absolute; left: -2px; top: 1px;
   width: 18px; height: 18px; border-radius: 5px;
@@ -462,8 +482,10 @@ tr.line:hover td.code { box-shadow: inset 0 0 0 999px var(--row-hover); }
   font-size: 12px; line-height: 1; cursor: pointer; padding: 0;
   opacity: 0; transition: opacity .1s;
 }
-tr.line:hover .cbtn, tr.line.has-comment .cbtn { opacity: 1; }
-tr.line.has-comment .cbtn { background: var(--card); color: var(--blue); }
+tr.line:hover .cbtn, .has-comment .cbtn { opacity: 1; }
+.has-comment .cbtn { background: var(--card); color: var(--blue); }
+/* In split view the marker lands on the commented cell, not the whole row */
+body.split td.code.has-comment { box-shadow: inset 2px 0 0 var(--blue); }
 
 /* annotation / comment rows */
 td.wide { padding: 6px 14px 6px 4.8em; }
@@ -701,6 +723,7 @@ try {
   <h1 id="title"></h1>
   <span class="stats-chip" id="stats"></span>
   <span class="spacer"></span>
+  <label class="opt diff-only" title="Show the diff side by side (old left, new right)"><input type="checkbox" id="split-mode" checked> Split</label>
   <label class="opt diff-only" title="Hide hunks in test files"><input type="checkbox" id="hide-tests" checked> Hide tests</label>
   <label class="opt html-only" title="Click an element in the page to comment on it (turn off to use the page normally)"><input type="checkbox" id="pick-mode" checked> Comment mode</label>
   <button class="comment-count" id="comment-count" title="Open the comment list"></button>
@@ -757,6 +780,7 @@ try {
       <tr class="diff-only"><td class="key">click</td><td>Hover a diff line, the overview, an intent, or an AI note — press the + to comment</td></tr>
       <tr class="diff-only"><td class="key">copy</td><td>The button next to a file name copies its path</td></tr>
       <tr class="diff-only"><td class="key">j / k</td><td>Jump to the next / previous group</td></tr>
+      <tr class="diff-only"><td class="key">Split</td><td>Side-by-side (old left, new right) or unified — the choice is remembered</td></tr>
       <tr class="html-only"><td class="key">click</td><td>Click any element in the page to comment on it</td></tr>
       <tr class="html-only"><td class="key">pin</td><td>A numbered pin marks each commented element; click a pin or a comment to jump between them</td></tr>
       <tr class="html-only"><td class="key">p</td><td>Toggle comment mode (turn it off to click links and buttons in the page)</td></tr>
@@ -804,6 +828,11 @@ const VERSION = "__REVIEW_VERSION__"; // review-data.json version (used to detec
    No grouping and no explanations — the page is shown in an iframe and commented on element by element. */
 const HTML_MODE = !!(DATA.html || DATA.htmlInline);
 if (HTML_MODE) document.body.classList.add("mode-html");
+/* Diff layout: side by side (default) or unified. Remembered like the theme */
+const SPLIT_KEY = "kaisetu:split";
+let SPLIT = true;
+try { SPLIT = localStorage.getItem(SPLIT_KEY) !== "0"; } catch (e) {}
+document.body.classList.toggle("split", SPLIT);
 
 /* ---------- state (localStorage + server autosave) ---------- */
 function fingerprint(s) {
@@ -1042,7 +1071,31 @@ if (SERVER) {
 const indexEl = document.getElementById("index");
 const detailEl = document.getElementById("detail");
 
-groups.forEach((g, gi) => {
+/* Pair up hunk rows for the side-by-side view: a run of deletions lines up with the
+   additions that replaced it, and whatever has no counterpart gets an empty cell. */
+function pairRows(rows) {
+  const pairs = [];
+  for (let i = 0; i < rows.length; ) {
+    if (rows[i].t !== "del" && rows[i].t !== "add") {
+      pairs.push({ left: { row: rows[i], idx: i }, right: { row: rows[i], idx: i }, same: true });
+      i++;
+      continue;
+    }
+    const dels = [], adds = [];
+    while (i < rows.length && rows[i].t === "del") dels.push({ row: rows[i], idx: i++ });
+    while (i < rows.length && rows[i].t === "add") adds.push({ row: rows[i], idx: i++ });
+    for (let k = 0; k < Math.max(dels.length, adds.length); k++)
+      pairs.push({ left: dels[k] || null, right: adds[k] || null });
+  }
+  return pairs;
+}
+
+/* Rebuilt from scratch when the diff layout changes, so comments are re-rendered after it */
+function renderGroups() {
+  const COLS = SPLIT ? 6 : 4;   // columns a full-width row (annotation / comment) has to span
+  indexEl.innerHTML = "";
+  detailEl.innerHTML = "";
+  groups.forEach((g, gi) => {
   const risk = RISK[g.risk] || RISK.low;
   const sections = g.sections || (g.hunks ? [{ hunks: g.hunks }] : []);
   const allHunks = sections.flatMap(s => s.hunks || []);
@@ -1157,51 +1210,78 @@ groups.forEach((g, gi) => {
     const table = document.createElement("table");
     table.className = "diff";
     const tbody = document.createElement("tbody");
+    /* Rows spanning both sides: AI notes, questions, and the comment threads themselves */
+    const wideRow = (html, cls = "annotation") => {
+      const tr = document.createElement("tr");
+      tr.className = cls;
+      tr.innerHTML = `<td class="wide" colspan="${COLS}">${html}</td>`;
+      return tr;
+    };
+    const calloutHtml = a => `<div class="callout ${esc(a.type || "explain")}">
+      <span class="label">${ANN[a.type] || "Note"}</span><span>${esc(a.text || "")}</span></div>`;
+    const slotRow = key => {
+      const tr = wideRow("", "comment-slot");
+      tr.dataset.slot = key;
+      tr.hidden = true;
+      return tr;
+    };
+    const cbtnHtml = key => `<button class="cbtn" title="Comment on this line"
+      data-act="new" data-kind="line" data-key="${esc(key)}">+</button>`;
+
     if (pendingExplain) {
-      const et = document.createElement("tr");
-      et.className = "annotation";
-      et.innerHTML = `<td class="wide" colspan="4"><div class="callout explain prose-target">
+      tbody.appendChild(wideRow(`<div class="callout explain prose-target">
         <span class="label">AI note</span><span>${esc(pendingExplain)}</span>
         <button class="pbtn" data-act="new" data-kind="doc" data-key="${esc(sDocKey)}"
-          title="Comment on this explanation">+</button></div></td>`;
-      tbody.appendChild(et);
+          title="Comment on this explanation">+</button></div>`));
       // Comments on this explanation render right below it
-      const ec = document.createElement("tr");
-      ec.className = "comment-slot";
+      const ec = wideRow("", "comment-slot");
       ec.hidden = true;
-      ec.innerHTML = `<td class="wide" colspan="4" data-dcwrap="${esc(sDocKey)}"></td>`;
+      ec.firstElementChild.dataset.dcwrap = sDocKey;
       tbody.appendChild(ec);
       pendingExplain = null;
     }
-    parsed.rows.forEach((r, i) => {
-      const tr = document.createElement("tr");
-      tr.className = "line " + r.t;
-      const key = h.id + ":" + i;
-      tr.dataset.ckey = key;
-      const sign = r.t === "add" ? "+" : r.t === "del" ? "−" : "";
-      tr.innerHTML = `
-        <td class="ln">${r.old ?? ""}</td>
-        <td class="ln">${r.new ?? ""}</td>
-        <td class="sign">${sign}<button class="cbtn" title="Comment on this line" data-act="new" data-kind="line" data-key="${esc(key)}">+</button></td>
-        <td class="code">${esc(r.text)}</td>`;
-      tbody.appendChild(tr);
+    /* Annotations and comments hang off a row index either way, so keys are identical in both layouts */
+    const trailingRows = idxs => {
+      for (const i of idxs)
+        for (const a of anchors.get(i) || []) tbody.appendChild(wideRow(calloutHtml(a)));
+      for (const i of idxs) tbody.appendChild(slotRow(h.id + ":" + i));
+    };
 
-      for (const a of anchors.get(i) || []) {
-        const at = document.createElement("tr");
-        at.className = "annotation";
-        at.innerHTML = `<td class="wide" colspan="4">
-          <div class="callout ${esc(a.type || "explain")}">
-            <span class="label">${ANN[a.type] || "Note"}</span><span>${esc(a.text || "")}</span>
-          </div></td>`;
-        tbody.appendChild(at);
+    if (SPLIT) {
+      /* One side of a paired row: line number, sign + comment button, code */
+      const sideCells = (cell, isRight) => {
+        const gap = isRight ? " gap" : "";
+        if (!cell) return `<td class="ln s-empty${gap}"></td><td class="sign s-empty"></td><td class="code s-empty"></td>`;
+        const { row, idx } = cell;
+        const cls = row.t === "add" || row.t === "del" ? "s-" + row.t : "s-ctx";
+        const key = h.id + ":" + idx;
+        return `<td class="ln ${cls}${gap}">${(isRight ? row.new : row.old) ?? ""}</td>
+          <td class="sign ${cls}" data-ckey="${esc(key)}">${row.t === "add" ? "+" : row.t === "del" ? "−" : ""}${cbtnHtml(key)}</td>
+          <td class="code ${cls}" data-ckey="${esc(key)}">${esc(row.text)}</td>`;
+      };
+      for (const pair of pairRows(parsed.rows)) {
+        const tr = document.createElement("tr");
+        tr.className = "line";
+        tr.innerHTML = sideCells(pair.left, false) + sideCells(pair.right, true);
+        tbody.appendChild(tr);
+        // A context row is the same row on both sides, so it only gets one slot
+        trailingRows([...new Set([pair.left?.idx, pair.right?.idx].filter(i => i != null))]);
       }
-      const ct = document.createElement("tr");
-      ct.className = "comment-slot";
-      ct.dataset.slot = key;
-      ct.hidden = true;
-      ct.innerHTML = `<td class="wide" colspan="4"></td>`;
-      tbody.appendChild(ct);
-    });
+    } else {
+      parsed.rows.forEach((r, i) => {
+        const tr = document.createElement("tr");
+        tr.className = "line " + r.t;
+        const key = h.id + ":" + i;
+        tr.dataset.ckey = key;
+        tr.innerHTML = `
+          <td class="ln">${r.old ?? ""}</td>
+          <td class="ln">${r.new ?? ""}</td>
+          <td class="sign">${r.t === "add" ? "+" : r.t === "del" ? "−" : ""}${cbtnHtml(key)}</td>
+          <td class="code">${esc(r.text)}</td>`;
+        tbody.appendChild(tr);
+        trailingRows([i]);
+      });
+    }
     table.appendChild(tbody);
     sec.appendChild(table);
     art.appendChild(sec);
@@ -1209,7 +1289,9 @@ groups.forEach((g, gi) => {
   });
 
   detailEl.appendChild(art);
-});
+  });
+}
+renderGroups();
 
 /* ---------- file tree (left sidebar) ---------- */
 (function buildFileTree() {
@@ -1289,7 +1371,9 @@ function renderThread(key, kind, editAt = null) {
   const done = !!doneStore(kind)[key];
   const marked = msgs.length > 0 && !done;
   if (kind === "line")
-    document.querySelector(`tr[data-ckey="${CSS.escape(key)}"]`)?.classList.toggle("has-comment", marked);
+    // Unified marks the row; split marks the commented side's cells
+    document.querySelectorAll(`[data-ckey="${CSS.escape(key)}"]`)
+      .forEach(el => el.classList.toggle("has-comment", marked));
   else if (kind !== "el")   // element threads are marked by their pin and card instead
     document.querySelector(`.pbtn[data-kind="${kind}"][data-key="${CSS.escape(key)}"]`)
       ?.classList.toggle("has", marked);
@@ -1627,6 +1711,17 @@ document.getElementById("copy-btn").addEventListener("click", copySummary);
 document.getElementById("comment-count").addEventListener("click", () => toggleComments());
 document.getElementById("hide-tests").addEventListener("change", e =>
   document.body.classList.toggle("hide-tests", e.target.checked));
+const splitBox = document.getElementById("split-mode");
+splitBox.checked = SPLIT;
+splitBox.addEventListener("change", e => {
+  SPLIT = e.target.checked;
+  try { localStorage.setItem(SPLIT_KEY, SPLIT ? "1" : "0"); } catch (err) {}
+  document.body.classList.toggle("split", SPLIT);
+  // The diff is rebuilt in the other layout; comment keys are layout-independent, so threads come back
+  renderGroups();
+  for (const [key, kind] of eachThread()) renderThread(key, kind);
+  refreshCounters();
+});
 document.getElementById("drawer-close").addEventListener("click", () => toggleDrawer(false));
 document.getElementById("finish-btn").addEventListener("click", finishReview);
 document.getElementById("update-apply").addEventListener("click", applyDataUpdate);
