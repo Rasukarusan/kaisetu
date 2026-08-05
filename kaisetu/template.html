@@ -1769,7 +1769,8 @@ function syncThreadCol() {
 function layoutPins() {
   const wrap = document.getElementById("pins");
   for (const p of wrap.querySelectorAll(".pin")) p.remove();
-  if (!frameDoc()) return;
+  // With comment mode off the page is being used, not reviewed: no pins over it
+  if (!frameDoc() || !pickMode()) return;
   const h = wrap.clientHeight, w = wrap.clientWidth;
   for (const [key, num] of elNums) {
     const el = resolveAnchorEl(state.elAnchors[key]);
@@ -1837,6 +1838,7 @@ function initHtmlMode() {
     preview.classList.toggle("picking", pick.checked);
     document.getElementById("pick-hint").hidden = !pick.checked;
     if (!pick.checked) hideHl();
+    layoutPins();   // pins come back when commenting resumes
   });
   document.getElementById("page-comment-btn").addEventListener("click", startPageComment);
   addEventListener("resize", layoutPins);
