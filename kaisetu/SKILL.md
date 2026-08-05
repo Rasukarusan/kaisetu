@@ -18,6 +18,14 @@ Always read `$SKILL_DIR/schema.md` for the data format.
 **Language:** write all review content (title, tagline, overview, intents, explanations, annotations)
 in the language the user is conversing in.
 
+There are two modes, decided by what is being reviewed:
+
+- **Diff review** (default) — steps 1–6 below.
+- **HTML review** — the target is an HTML file itself. No diff, no grouping, no explanations:
+  the page is rendered and the human comments on it element by element.
+  Use it when the user passes an `.html` file or asks to review a rendered page / a document that is
+  an HTML file. See "HTML review mode" at the end.
+
 ## Overall flow
 
 ```
@@ -128,6 +136,39 @@ Comments are **threads** (human comment → AI answer → human reply → …).
    presses "Finish review" again (the result JSON is overwritten).
    Delete the result file and re-run the wait command from step 3–4.3 to detect the next round the same way.
    When the review exchange is fully done, clean up with `kill <pid>` using the pid printed at startup.
+
+## HTML review mode (the target is an HTML file)
+
+For reviewing an HTML file itself — a shared explainer, a report, a generated page.
+**Skip steps 1–2 entirely: no diff, no grouping, no explanations.** The human reads the rendered page
+and comments on the parts that need changing; you fix the HTML.
+
+1. Create `$REVIEW_DIR` as in step 1 and write `review-data.json` with just these fields:
+   ```json
+   {
+     "title": "Review of the release notes page",
+     "html": "docs/release-notes.html",
+     "generatedAt": "2026-08-05 10:00",
+     "repoRoot": "/Users/me/repos/myapp"
+   }
+   ```
+   `html` is the reviewed file, absolute or relative to the server CWD (= the target repo root).
+   Add nothing else — no `groups`, `overview`, `stats`, or explanations.
+   Write `meta.json` as usual so `/kaisetu-list` can reopen it.
+2. Start the server and set up completion detection exactly as in steps 3–4.
+   The page renders the file in an iframe; files next to it (CSS, images, JS) are served too.
+3. The human clicks any element to comment on it, or "On the whole page" for a page-wide comment.
+   Numbered pins mark commented elements.
+4. Read the result JSON's **`elementComments`** and act on each thread with `awaiting: true`:
+   - `selector` — CSS selector of the element (`null` means the comment is about the whole page)
+   - `label` / `text` — which element it was and the text it contained; use these to find the spot
+     in the source
+   - `anchored: false` — the element no longer exists (the page changed after the comment was written)
+   - Fix the HTML file directly. The server watches it, so the page reloads with your fix within
+     seconds and the comments stay anchored.
+   - Answer in `$REVIEW_DIR/review-data.replies.json` under `elementComments`
+     (`key` = the result's `key`; see schema.md).
+5. Threads, "Reply", resolve, and "Finish review" behave exactly as in diff review (steps 5–6).
 
 ## Notes
 
