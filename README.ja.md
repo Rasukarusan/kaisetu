@@ -38,6 +38,9 @@ AIエージェントは人間がレビューできる速度を超えて差分を
   「Finish review」で送り返す。未回答スレッドはヘッダーにカウント表示
 - **解説はその場で書き直る** — 解説に「分かりにくい」とコメントするとエージェントが書き直し、
   数秒で画面が新しい解説に入れ替わる（コメントは保持される）
+- **HTML そのもののレビュー** — diff の代わりに `.html` を渡すと、**レンダリング結果**にコメント層が
+  重なる。要素をクリックしてコメントすると、エージェントが HTML を直し、画面はその修正を反映して
+  再読み込みされる（コメントは要素に貼りついたまま）。グループ化も解説もなし、見てコメントするだけ
 - **ダークモード** — OS 追従 + 手動トグル
 - **依存ゼロ** — HTML テンプレート1枚 + Python 3 標準ライブラリのサーバ。npm もビルドも不要
 
@@ -48,7 +51,8 @@ AIエージェントは人間がレビューできる速度を超えて差分を
 ```bash
 git clone https://github.com/Rasukarusan/kaisetu.git
 cd kaisetu
-python3 kaisetu/scripts/serve.py kaisetu/example/sample-data.json
+python3 kaisetu/scripts/serve.py kaisetu/example/sample-data.json       # diff レビュー
+python3 kaisetu/scripts/serve.py kaisetu/example/sample-page-data.json  # HTML レビュー
 ```
 
 ブラウザにレビュー画面が開きます。`?` でキーボードショートカット一覧。
@@ -71,11 +75,14 @@ Claude Code を再起動して:
 /kaisetu abc1234            # コミット単体
 /kaisetu main..HEAD         # git が理解する任意のリビジョン範囲
 /kaisetu HEAD~3..HEAD       # 例: 直近3コミット
+/kaisetu docs/report.html   # レンダリングされた HTML 自体をレビュー
 /kaisetu-list               # 過去のレビューを一覧・再開
 ```
 
 範囲指定は自由記述です。コミットハッシュ・範囲・ブランチ名・普通の言葉、
 どれで指定してもエージェントがそのまま `git diff` に渡します。
+`.html` ファイルを渡した場合は HTML レビューに切り替わり、iframe に描画されたページを
+要素単位でコメントできます（指摘した要素には番号付きピンが付きます）。
 
 ### Codex
 
@@ -90,7 +97,8 @@ Claude Code を再起動して:
 | `kaisetu/schema.md` | LLM が生成する唯一の成果物 `review-data.json` の仕様 |
 | `kaisetu/template.html` | レビュー画面（自己完結・外部リソースなし） |
 | `kaisetu/scripts/serve.py` | ローカルサーバ（Python 3 標準ライブラリのみ）。`--build` で静的 HTML 出力 |
-| `kaisetu/example/sample-data.json` | デモ用データ |
+| `kaisetu/example/sample-data.json` | デモ用データ（diff レビュー） |
+| `kaisetu/example/sample-page-data.json` | デモ用データ（HTML レビュー）+ `sample-page.html` |
 | `kaisetu-list/SKILL.md` | 過去レビューの一覧・再開を行う補助スキル |
 
 エージェントは `review-data.json`（groups → sections → hunks + 解説）を書いて `serve.py` を起動します。

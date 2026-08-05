@@ -38,6 +38,9 @@ together, which parts deserve attention first, and what the author (the AI) was 
   a thread and *Finish review* to send it back. Unanswered threads are counted in the header
 - **Self-rewriting explanations** — comment "this is unclear" on an explanation and the agent rewrites
   it; the page swaps in the new text within seconds, keeping your comments in place
+- **HTML review** — hand it an `.html` file instead of a diff and you get the *rendered page* with a
+  comment layer: click any element, leave a comment, the agent fixes the HTML and the page reloads with
+  the fix while your comments stay anchored. No grouping, no explanations — just look and comment
 - **Dark mode** — follows your OS, with a manual toggle
 - **Zero dependencies** — one HTML template + a Python 3 standard-library server. No npm, no build
 
@@ -48,7 +51,8 @@ No agent needed — try the UI with the bundled sample data:
 ```bash
 git clone https://github.com/Rasukarusan/kaisetu.git
 cd kaisetu
-python3 kaisetu/scripts/serve.py kaisetu/example/sample-data.json
+python3 kaisetu/scripts/serve.py kaisetu/example/sample-data.json       # diff review
+python3 kaisetu/scripts/serve.py kaisetu/example/sample-page-data.json  # HTML review
 ```
 
 Your browser opens the review page. Press `?` for keyboard shortcuts.
@@ -71,11 +75,14 @@ Restart Claude Code, then:
 /kaisetu abc1234            # a single commit
 /kaisetu main..HEAD         # any revision range git understands
 /kaisetu HEAD~3..HEAD       # e.g. the last 3 commits
+/kaisetu docs/report.html   # review the rendered HTML page itself
 /kaisetu-list               # list and reopen past reviews
 ```
 
 The scope argument is free-form: commit hashes, ranges, branch names, or plain
 words — the agent passes whatever revisions you name to `git diff`.
+Name an `.html` file instead and it switches to HTML review: the page is rendered in an iframe and you
+comment element by element, with numbered pins marking what you flagged.
 
 ### Codex
 
@@ -90,7 +97,8 @@ Link the same directories into your Codex skills location (e.g. `~/.agents/skill
 | `kaisetu/schema.md` | Spec of `review-data.json`, the only thing the LLM generates |
 | `kaisetu/template.html` | The review page (self-contained, no external resources) |
 | `kaisetu/scripts/serve.py` | Local server (Python 3 stdlib only); `--build` emits static HTML |
-| `kaisetu/example/sample-data.json` | Demo data |
+| `kaisetu/example/sample-data.json` | Demo data (diff review) |
+| `kaisetu/example/sample-page-data.json` | Demo data (HTML review) + `sample-page.html` |
 | `kaisetu-list/SKILL.md` | Companion skill: list and reopen past reviews |
 
 The agent writes `review-data.json` (groups → sections → hunks, with explanations) and starts
