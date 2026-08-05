@@ -215,6 +215,9 @@ Written when "Finish review" is pressed. Each comment is a thread of alternating
 
 - Groups are displayed in `risk` order (high → medium → low). Order them by risk in the JSON as well
   (within the same risk, JSON order is preserved).
+- Hunks render side by side by default (old left, new right); deletions line up with the additions that
+  replaced them. The header's "Split" toggle switches to the unified view and is remembered per browser.
+  Comments are keyed by hunk ID and row index in both layouts, so switching never moves them.
 - A section's `explain` is shown as an "AI explanation" callout at the top of the section's first hunk.
 - Groups containing `type: "question"` annotations get a "question" badge in the index.
 - Human comments are saved to localStorage and to the server's state.json. The localStorage key is

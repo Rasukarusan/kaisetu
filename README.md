@@ -30,6 +30,8 @@ together, which parts deserve attention first, and what the author (the AI) was 
   so both readers get it at a glance
 - **Groups by intent, not by file** — a rename plus its import fixes is one group; groups are
   displayed in risk order (high → medium → low) so you read the dangerous parts first
+- **Side-by-side diff** — old on the left, new on the right, with deletions lined up against the
+  additions that replaced them; the header's *Split* toggle switches to unified and is remembered
 - **Inline AI notes** — per-feature explanations at the top of each section, line-level notes and
   *questions* (spots where even the AI couldn't tell the intent) directly on diff lines
 - **Comment anything** — hover any diff line, the overview, a group's intent, or an AI explanation
