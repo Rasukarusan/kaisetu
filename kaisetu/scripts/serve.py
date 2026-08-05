@@ -9,6 +9,11 @@ the page follow automatically.
 The calling agent watches for the result JSON, reads it, and kills this process
 when it is no longer needed.
 
+When review-data.json has an `html` field, the page reviews that HTML file
+itself: it is served at /target (with its sibling assets) and shown in an
+iframe the human comments on element by element. Rewriting the HTML bumps the
+version, so the page reloads with the fixed page.
+
 Usage:
   serve.py <review-data.json> [--port N] [--result PATH] [--no-open]
   serve.py <review-data.json> --build [output.html]   # emit static HTML only (no server)
@@ -17,10 +22,12 @@ Dependencies: Python 3 standard library only.
 """
 import argparse
 import json
+import mimetypes
 import os
 import pathlib
 import socket
 import sys
+import urllib.parse
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -42,6 +49,17 @@ def render(data: dict, state_text: str = "null", version: str = "static") -> str
     return (template.replace("__REVIEW_DATA__", payload)
                     .replace("__REVIEW_STATE__", state_payload)
                     .replace("__REVIEW_VERSION__", version))
+
+
+def resolve_ref(ref: str, data_path: pathlib.Path):
+    """Resolve a path written in review-data.json (plan / html).
+
+    Tried as an absolute path, relative to the server CWD, then relative to the data file.
+    """
+    for base in (pathlib.Path(ref), pathlib.Path.cwd() / ref, data_path.parent / ref):
+        if base.is_file():
+            return base
+    return None
 
 
 def free_port() -> int:
@@ -67,15 +85,30 @@ def main() -> None:
     def load_data() -> dict:
         return json.loads(data_path.read_text(encoding="utf-8"))
 
+    # HTML review mode: the reviewed page itself (served at /target), or None in diff mode
+    def html_target():
+        ref = load_data().get("html")
+        return resolve_ref(ref, data_path) if ref else None
+
     def data_version() -> str:
-        return str(data_path.stat().st_mtime_ns)
+        # The reviewed HTML counts too: fixing it makes the page reload with the new render
+        parts = [str(data_path.stat().st_mtime_ns)]
+        target = html_target()
+        if target:
+            parts.append(str(target.stat().st_mtime_ns))
+        return "-".join(parts)
 
     def state_text() -> str:
         return state_path.read_text(encoding="utf-8") if state_path.is_file() else "null"
 
     if args.build is not None:
         out = data_path.with_suffix(".html") if args.build == "-" else pathlib.Path(args.build)
-        out.write_text(render(load_data(), state_text()), encoding="utf-8")
+        data = load_data()
+        target = html_target()
+        if target:
+            # No server to serve /target from, so inline the reviewed page (rendered via srcdoc)
+            data["htmlInline"] = target.read_text(encoding="utf-8")
+        out.write_text(render(data, state_text()), encoding="utf-8")
         print(out)
         return
 
@@ -98,6 +131,26 @@ def main() -> None:
             self.end_headers()
             self.wfile.write(body)
 
+        def _serve_asset(self) -> bool:
+            """Serve a file sitting next to the reviewed HTML (its relative css / js / images)."""
+            target = html_target()
+            if not target:
+                return False
+            rel = urllib.parse.unquote(self.path.split("?", 1)[0].split("#", 1)[0].lstrip("/"))
+            if not rel:
+                return False
+            base = target.parent.resolve()
+            path = (base / rel).resolve()
+            if not path.is_file() or not path.is_relative_to(base):  # no escaping the page's directory
+                return False
+            ctype = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+            if ctype.startswith("text/") or ctype in (
+                "application/javascript", "application/json", "image/svg+xml"
+            ):
+                ctype += "; charset=utf-8"
+            self._respond(200, path.read_bytes(), ctype)
+            return True
+
         def do_GET(self):
             if self.path in ("/", "/index.html"):
                 # Render on every request, embedding the latest review data and state (comment drafts)
@@ -115,13 +168,23 @@ def main() -> None:
                 if not plan:
                     self._respond(404, b"plan not set")
                     return
-                # Resolve as absolute path / relative to server CWD / relative to the data file, in that order
-                for base in (pathlib.Path(plan), pathlib.Path.cwd() / plan, data_path.parent / plan):
-                    if base.is_file():
-                        self._respond(200, base.read_text(encoding="utf-8").encode("utf-8"))
-                        return
-                self._respond(404, f"plan not found: {plan}".encode("utf-8"))
-            else:
+                found = resolve_ref(plan, data_path)
+                if found:
+                    self._respond(200, found.read_text(encoding="utf-8").encode("utf-8"))
+                else:
+                    self._respond(404, f"plan not found: {plan}".encode("utf-8"))
+            elif self.path == "/target":
+                # HTML review mode: the reviewed page, shown in the page's iframe
+                ref = load_data().get("html")
+                if not ref:
+                    self._respond(404, b"html not set")
+                    return
+                target = html_target()
+                if target:
+                    self._respond(200, target.read_bytes(), "text/html; charset=utf-8")
+                else:
+                    self._respond(404, f"html not found: {ref}".encode("utf-8"))
+            elif not self._serve_asset():
                 self._respond(404, b"not found")
 
         def do_POST(self):
