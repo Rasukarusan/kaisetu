@@ -652,17 +652,18 @@ body.mode-html main { display: none; }
 }
 .tc-anchor:hover .lbl { color: var(--ink); }
 .tc-anchor .num {
-  flex: none; min-width: 17px; padding: 0 4px; border-radius: 9px;
-  background: var(--blue); color: #fff;
-  font-size: 10.5px; line-height: 17px; text-align: center;
+  flex: none; min-width: 17px; height: 17px; padding: 0 4px; border: none; border-radius: 9px;
+  background: var(--blue); color: #fff; cursor: pointer;
+  font-family: var(--mono); font-size: 10.5px; line-height: 17px; text-align: center;
 }
+.tc-anchor .num:hover { background: var(--blue-hover); }
 .tc-anchor .caret {
   flex: none; display: inline-block; width: 12px; padding: 0;
   border: none; background: none; cursor: pointer;
   font-size: 8.5px; color: var(--ink-faint); transition: transform .12s;
 }
-.tc-anchor .caret:hover { color: var(--ink); }
-/* Resolved threads collapse to their anchor line plus a one-line preview */
+.tc-anchor:hover .caret { color: var(--ink); }
+/* Folded threads shrink to their anchor line plus a one-line preview */
 .tcard.resolved { opacity: .72; }
 .tcard.resolved:hover { opacity: 1; }
 .tcard.resolved .tc-anchor .num { background: var(--gray-bg); color: var(--green); }
@@ -1544,15 +1545,19 @@ document.addEventListener("click", e => {
   if (ftName) { ftName.parentElement.classList.toggle("closed"); return; }
   const fj = e.target.closest("[data-file-jump]");
   if (fj) { document.getElementById("hunk-" + fj.dataset.fileJump)?.scrollIntoView(); return; }
-  const ex = e.target.closest("[data-elexpand]");   // caret / preview line of a resolved thread
-  if (ex) {
-    const key = ex.dataset.elexpand;
-    if (expandedEl.has(key)) expandedEl.delete(key); else expandedEl.add(key);
+  const go = e.target.closest("[data-elgoto]");   // pin, or a card's number badge
+  if (go) {
+    toggleFold(go.dataset.elgoto, false);   // jumping to a comment means you want to read it
+    renderThreadCol();
+    focusEl(go.dataset.elgoto);
+    return;
+  }
+  const fold = e.target.closest("[data-elfold]");   // a card's header row or its folded preview
+  if (fold) {
+    toggleFold(fold.dataset.elfold);
     renderThreadCol();
     return;
   }
-  const go = e.target.closest("[data-elgoto]");   // pin or comment-card header in HTML mode
-  if (go) { focusEl(go.dataset.elgoto); return; }
   const item = e.target.closest(".drawer-item");
   if (item && !e.target.closest("button")) {
     const { gotoKey: key, gotoKind: kind } = item.dataset;
@@ -1599,7 +1604,8 @@ document.addEventListener("click", e => {
   }
   // The element comment column owns its cards and pins, so rebuild it after the thread changed
   if (kind === "el" && act !== "new" && act !== "reply" && act !== "edit") {
-    if (act === "resolve") expandedEl.delete(key);   // resolving folds the card away
+    // Resolving folds the card away; reopening puts it back to the unfolded default
+    if (act === "resolve" || act === "unresolve") { foldedEl.delete(key); unfoldedEl.delete(key); }
     if (!msgsOf(key, "el").length) {
       // Cancelled (or emptied) before saving: drop the draft card entirely and let go of the focus
       if (pendingEl === key) pendingEl = null;
@@ -1664,7 +1670,13 @@ const frame = document.getElementById("target-frame");
 let pendingEl = null;    // key whose composer is open but not saved yet
 let currentEl = null;    // focused thread (highlighted pin + card)
 let elNums = new Map();  // key → pin number (page-wide comments get no pin)
-const expandedEl = new Set();   // resolved threads the human expanded again (view state only)
+/* Folding is view state only. Resolved threads fold by default; either set overrides that */
+const foldedEl = new Set(), unfoldedEl = new Set();
+const isFolded = key => foldedEl.has(key) || (!!state.elResolved[key] && !unfoldedEl.has(key));
+function toggleFold(key, fold = !isFolded(key)) {
+  foldedEl[fold ? "add" : "delete"](key);
+  unfoldedEl[fold ? "delete" : "add"](key);
+}
 let hlTimer = null, scrollRaf = 0;
 
 const frameDoc = () => { try { return frame.contentDocument; } catch (e) { return null; } };
@@ -1735,23 +1747,24 @@ function renderThreadCol() {
   list.innerHTML = keys.map(key => {
     const lost = key !== "page" && !resolveAnchorEl(state.elAnchors[key]);
     const done = !!state.elResolved[key];
-    const collapsed = done && !expandedEl.has(key);
+    const folded = isFolded(key);
     const last = msgsOf(key, "el").at(-1) || "";
-    return `<div class="tcard${done ? " resolved" : ""}${collapsed ? " collapsed" : ""}${currentEl === key ? " current" : ""}"
+    return `<div class="tcard${done ? " resolved" : ""}${folded ? " collapsed" : ""}${currentEl === key ? " current" : ""}"
         data-elcard="${esc(key)}">
-      <div class="tc-anchor" data-elgoto="${esc(key)}" title="${esc(state.elAnchors[key]?.sel || key)}">
-        ${done ? `<button class="caret" data-elexpand="${esc(key)}"
-          title="${collapsed ? "Expand this resolved comment" : "Collapse"}">▼</button>` : ""}
-        <span class="num">${key === "page" ? "◎" : elNums.get(key)}</span>
+      <div class="tc-anchor" data-elfold="${esc(key)}" title="${folded ? "Unfold this comment" : "Fold this comment"}">
+        <button class="caret">▼</button>
+        <button class="num" data-elgoto="${esc(key)}"
+          title="${esc(key === "page" ? "the whole page" : state.elAnchors[key]?.sel || key)}"
+          >${key === "page" ? "◎" : elNums.get(key)}</button>
         <span class="lbl">${esc(anchorLabel(key))}</span>
         ${lost ? `<span class="lost">anchor lost</span>` : ""}
       </div>
-      ${collapsed ? `<div class="tc-preview" data-elexpand="${esc(key)}" title="Expand">✓ ${esc(last)}</div>` : ""}
+      ${folded ? `<div class="tc-preview" data-elfold="${esc(key)}">${done ? "✓ " : ""}${esc(last)}</div>` : ""}
       <div data-elwrap="${esc(key)}"></div>
     </div>`;
   }).join("");
   for (const key of keys) {
-    if (state.elResolved[key] && !expandedEl.has(key)) continue;   // collapsed: nothing to render
+    if (isFolded(key)) continue;   // folded: nothing to render
     renderThread(key, "el", pendingEl === key && !msgsOf(key, "el").length ? 0 : null);
   }
   layoutPins();
