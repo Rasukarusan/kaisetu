@@ -23,7 +23,9 @@ over all entries works well):
 - `title` / `tagline` / `repoRoot`: from `meta.json` (only for old reviews without one, extract fields
   with `jq -r '.title, .repoRoot'` from review-data.json — still no Read)
 - Status: **finished** if `review-data.result.json` exists in the same directory. If so, also get the
-  comment count (length of `.comments + .groupComments`) with jq
+  comment count with jq: length of
+  `(.comments // []) + (.groupComments // []) + (.docComments // []) + (.elementComments // [])`
+  (`elementComments` appears in HTML reviews)
 
 ## 2. Present the list and let the user choose
 
