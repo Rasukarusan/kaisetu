@@ -4,3 +4,4 @@ __pycache__/
 *.state.json
 *.replies.json
 kaisetu/example/sample-data.html
+kaisetu/example/sample-page-data.html

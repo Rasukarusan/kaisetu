@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Release notes — Checkout v2</title>
+<style>
+  body { margin: 0; font-family: system-ui, sans-serif; color: #222; line-height: 1.7; background: #fff; }
+  header { background: #1f2937; color: #fff; padding: 40px 32px; }
+  header h1 { margin: 0 0 6px; font-size: 27px; }
+  header p { margin: 0; opacity: .8; }
+  main { max-width: 720px; margin: 0 auto; padding: 32px; }
+  h2 { font-size: 19px; margin: 34px 0 8px; }
+  .box { border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px 18px; background: #f9fafb; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; border-bottom: 1px solid #e5e7eb; padding: 8px 6px; }
+  footer { color: #6b7280; font-size: 13px; padding: 24px 32px 48px; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Checkout v2 is live</h1>
+  <p>What changed, who is affected, and what to do about it.</p>
+</header>
+
+<main>
+  <h2>Summary</h2>
+  <p>The checkout flow now confirms payment in a single step. Card details are tokenized in the
+  browser, so the server never sees a raw card number.</p>
+
+  <h2>Who is affected</h2>
+  <div class="box">
+    <p>Every customer paying by card. Bank transfer and invoice flows are untouched.</p>
+  </div>
+
+  <h2>Rollout</h2>
+  <table>
+    <thead><tr><th>Date</th><th>Scope</th><th>Owner</th></tr></thead>
+    <tbody>
+      <tr><td>Aug 6</td><td>Internal accounts only</td><td>Payments team</td></tr>
+      <tr><td>Aug 12</td><td>10% of traffic</td><td>Payments team</td></tr>
+      <tr><td>Aug 20</td><td>Everyone</td><td>Payments team</td></tr>
+    </tbody>
+  </table>
+
+  <h2>If something breaks</h2>
+  <p>Turn off the <code>checkout_v2</code> flag. The old flow stays deployable for one more release.</p>
+</main>
+
+<footer>Written for the whole team — ask in #payments if anything here is unclear.</footer>
+</body>
+</html>
