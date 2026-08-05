@@ -797,6 +797,10 @@ try {
 const DATA = JSON.parse(document.getElementById("review-data").textContent);
 const SERVER = location.protocol === "http:" || location.protocol === "https:";
 const VERSION = "__REVIEW_VERSION__"; // review-data.json version (used to detect rewrites)
+/* HTML review mode: review a rendered HTML page instead of a diff.
+   No grouping and no explanations — the page is shown in an iframe and commented on element by element. */
+const HTML_MODE = !!(DATA.html || DATA.htmlInline);
+if (HTML_MODE) document.body.classList.add("mode-html");
 
 /* ---------- state (localStorage + server autosave) ---------- */
 function fingerprint(s) {
@@ -806,16 +810,21 @@ function fingerprint(s) {
 }
 // The localStorage key is derived from the diff structure (hunk IDs and bodies).
 // Rewriting explanations does not move comment anchors, so the key stays stable too.
-const LS_KEY = "kaisetu:" + fingerprint(JSON.stringify((DATA.groups || []).map(
-  g => [g.id, (g.sections || (g.hunks ? [{ hunks: g.hunks }] : []))
-    .map(s => (s.hunks || []).map(h => [h.id, h.diff]))])));
-// comments[key] / groupComments[gid] / docComments[target] = human message threads (string arrays, oldest first).
+// In HTML mode it is derived from the reviewed page's path, so its comments survive the page being fixed.
+const LS_KEY = "kaisetu:" + fingerprint(HTML_MODE
+  ? "html:" + (DATA.html || DATA.title || "")
+  : JSON.stringify((DATA.groups || []).map(
+      g => [g.id, (g.sections || (g.hunks ? [{ hunks: g.hunks }] : []))
+        .map(s => (s.hunks || []).map(h => [h.id, h.diff]))])));
+// comments[key] / groupComments[gid] / docComments[target] / elComments[selector] = human message
+// threads (string arrays, oldest first).
 // AI answers live in `replies` at the same index (replies[key][i] answers the i-th human message).
 let state = {
-  comments: {}, groupComments: {}, docComments: {},
-  resolved: {}, groupResolved: {}, docResolved: {},
+  comments: {}, groupComments: {}, docComments: {}, elComments: {},
+  resolved: {}, groupResolved: {}, docResolved: {}, elResolved: {},
+  elAnchors: {},   // HTML mode: key → {sel, tag, text, label} (how to find the element again)
 };
-let replies = { comments: {}, groupComments: {}, docComments: {} }; // AI answers (polled from /api/replies)
+let replies = { comments: {}, groupComments: {}, docComments: {}, elComments: {} }; // AI answers (polled from /api/replies)
 // Restore from the newer of localStorage and the server-embedded state.json (compared via _savedAt)
 {
   let localState = null, serverState = null;
@@ -824,13 +833,16 @@ let replies = { comments: {}, groupComments: {}, docComments: {} }; // AI answer
   const pick = (serverState?._savedAt || 0) > (localState?._savedAt || 0)
     ? serverState : (localState || serverState);
   if (pick) state = Object.assign(state, pick);
-  for (const k of ["comments", "groupComments", "docComments", "resolved", "groupResolved", "docResolved"])
+  for (const k of ["comments", "groupComments", "docComments", "elComments",
+                   "resolved", "groupResolved", "docResolved", "elResolved", "elAnchors"])
     state[k] ??= {};
-  for (const store of [state.comments, state.groupComments, state.docComments])
+  for (const store of [state.comments, state.groupComments, state.docComments, state.elComments])
     for (const [k, v] of Object.entries(store)) {
       const t = typeof v === "string" ? [v] : Array.isArray(v) ? v.filter(x => typeof x === "string" && x) : [];
       if (t.length) store[k] = t; else delete store[k];
     }
+  // Anchors are only meaningful while their thread exists (a half-written comment leaves one behind)
+  for (const k of Object.keys(state.elAnchors)) if (!state.elComments[k]) delete state.elAnchors[k];
 }
 
 let saveTimer = null;
@@ -931,9 +943,17 @@ function resolveAnchor(rows, ann) {
 /* ---------- render ---------- */
 document.title = (DATA.title || "kaisetu") + " — kaisetu";
 document.getElementById("title").textContent = DATA.title || "";
-const st = DATA.stats || {};
-document.getElementById("stats").innerHTML =
-  `${st.files ?? "?"} files / ${st.hunks ?? "?"} hunks <ins>+${st.additions ?? "?"}</ins> <del>−${st.deletions ?? "?"}</del>`;
+const st = DATA.stats;
+const statsEl = document.getElementById("stats");
+if (st) {
+  statsEl.innerHTML =
+    `${st.files ?? "?"} files / ${st.hunks ?? "?"} hunks <ins>+${st.additions ?? "?"}</ins> <del>−${st.deletions ?? "?"}</del>`;
+} else if (HTML_MODE) {
+  statsEl.textContent = DATA.html || "HTML";   // which page is under review
+  statsEl.title = DATA.html || "";
+} else {
+  statsEl.hidden = true;
+}
 const planHtml = DATA.plan
   ? (SERVER ? `<a href="/plan" target="_blank" title="Open the plan">${esc(DATA.plan)}</a>` : esc(DATA.plan))
   : "none";
@@ -981,6 +1001,7 @@ if (SERVER) {
       replies.comments = Object.fromEntries((r.comments || []).map(c => [c.key, asList(c)]));
       replies.groupComments = Object.fromEntries((r.groupComments || []).map(c => [c.group, asList(c)]));
       replies.docComments = Object.fromEntries((r.docComments || []).map(c => [c.target, asList(c)]));
+      replies.elComments = Object.fromEntries((r.elementComments || []).map(c => [c.key, asList(c)]));
       for (const [key, kind] of eachThread()) renderThread(key, kind);
       refreshCounters();
     } catch (e) {}
@@ -989,10 +1010,15 @@ if (SERVER) {
 
 /* Rebuild the page when review-data.json (the explanations) is rewritten.
    Comments are restored from the server's state.json and localStorage, so nothing is lost. */
-const SS_SCROLL = "kaisetu:scroll", SS_UPDATED = "kaisetu:updated";
+const SS_SCROLL = "kaisetu:scroll", SS_UPDATED = "kaisetu:updated", SS_FRAME = "kaisetu:frameScroll";
 function applyDataUpdate() {
   sessionStorage.setItem(SS_SCROLL, String(window.scrollY));
   sessionStorage.setItem(SS_UPDATED, "1");
+  // HTML mode: the reviewed page reloads too, so keep the reader where they were
+  try {
+    const win = document.getElementById("target-frame").contentWindow;
+    if (win) sessionStorage.setItem(SS_FRAME, String(win.scrollY));
+  } catch (e) {}
   location.reload();
 }
 if (SERVER) {
@@ -1209,12 +1235,14 @@ function commentMeta(key) {
   return { file: "?", line: "", code: "" };
 }
 
-/* kind = "line" (diff line) | "group" (whole group) | "doc" (rewrite request on AI-written prose).
-   key is a line key / group ID / doc target ("overview" | "group:g1" | "section:s1") */
+/* kind = "line" (diff line) | "group" (whole group) | "doc" (rewrite request on AI-written prose)
+   | "el" (HTML mode: an element in the reviewed page).
+   key is a line key / group ID / doc target ("overview" | "section:s1") / element selector ("page" = whole page) */
 const STORES = {
   line:  () => [state.comments, state.resolved, replies.comments],
   group: () => [state.groupComments, state.groupResolved, replies.groupComments],
   doc:   () => [state.docComments, state.docResolved, replies.docComments],
+  el:    () => [state.elComments, state.elResolved, replies.elComments],
 };
 const msgStore = kind => STORES[kind]()[0];
 const doneStore = kind => STORES[kind]()[1];
@@ -1227,6 +1255,7 @@ const isAwaiting = (key, kind) => msgsOf(key, kind).length > repsOf(key, kind).l
 function threadHost(key, kind) {
   if (kind === "group") return document.querySelector(`[data-gcwrap="${CSS.escape(key)}"]`);
   if (kind === "doc") return document.querySelector(`[data-dcwrap="${CSS.escape(key)}"]`);
+  if (kind === "el") return document.querySelector(`[data-elwrap="${CSS.escape(key)}"]`);
   const slot = document.querySelector(`tr[data-slot="${CSS.escape(key)}"]`);
   return slot ? slot.firstElementChild : null;
 }
@@ -1235,6 +1264,7 @@ function editorHtml(key, kind, idx, value, mode) {
   const head = mode === "edit" ? "EDIT — revise this message"
     : mode === "reply" ? "REPLY — reply to the answer"
     : kind === "doc" ? `COMMENT — on ${docLabels.get(key) || key}`
+    : kind === "el" ? `COMMENT — on ${anchorLabel(key)}`
     : kind === "group" ? "COMMENT — on this whole group (intent wording, design, …)" : "COMMENT — on this line";
   const attrs = `data-kind="${kind}" data-key="${esc(key)}" data-idx="${idx}"`;
   return `<div class="comment-editor">
@@ -1257,11 +1287,12 @@ function renderThread(key, kind, editAt = null) {
   const marked = msgs.length > 0 && !done;
   if (kind === "line")
     document.querySelector(`tr[data-ckey="${CSS.escape(key)}"]`)?.classList.toggle("has-comment", marked);
-  else
+  else if (kind !== "el")   // element threads are marked by their pin and card instead
     document.querySelector(`.pbtn[data-kind="${kind}"][data-key="${CSS.escape(key)}"]`)
       ?.classList.toggle("has", marked);
-  // Resolved threads are hidden on the diff (accessible only from the comment drawer)
-  if (editAt == null && (!msgs.length || done)) {
+  // Resolved threads are hidden on the diff (accessible only from the comment drawer).
+  // In HTML mode they stay in the comment column, greyed out, so the pin numbers keep matching.
+  if (editAt == null && (!msgs.length || (done && kind !== "el"))) {
     host.innerHTML = "";
     if (slot) slot.hidden = true;
     return;
@@ -1299,16 +1330,20 @@ function renderThread(key, kind, editAt = null) {
   host.innerHTML = `<div class="comment-view">
     <div class="cv-head"><span class="label">${headLabel}</span>
       <span class="spacer"></span>
-      <button class="link-btn" data-act="resolve" ${attrs}>✓ Resolve</button>
+      <button class="link-btn" data-act="${done ? "unresolve" : "resolve"}" ${attrs}>${done ? "↺ Reopen" : "✓ Resolve"}</button>
       <button class="link-btn danger" data-act="del" ${attrs}>Delete</button></div>
     ${body}${foot}</div>`;
   host.querySelector("textarea")?.focus();
 }
 
 /* ---------- counters / drawer ---------- */
-/* Enumerate commented threads as [key, kind] (docs → groups → lines) */
+/* Enumerate commented threads as [key, kind] (docs → groups → lines; HTML mode: elements in page order) */
 function eachThread() {
   const out = [];
+  if (HTML_MODE) {
+    for (const key of elKeysInOrder()) if (msgsOf(key, "el").length) out.push([key, "el"]);
+    return out;
+  }
   for (const key of Object.keys(state.docComments)) if (msgsOf(key, "doc").length) out.push([key, "doc"]);
   for (const g of groups) if (msgsOf(g.id, "group").length) out.push([g.id, "group"]);
   for (const key of Object.keys(state.comments)) if (msgsOf(key, "line").length) out.push([key, "line"]);
@@ -1317,6 +1352,7 @@ function eachThread() {
 
 /* Human-readable location of a thread */
 function threadWhere(key, kind) {
+  if (kind === "el") return anchorLabel(key);
   if (kind === "doc") return docLabels.get(key) || key;
   if (kind === "group") return "Group: " + (groups.find(g => g.id === key)?.title || key);
   const m = commentMeta(key);
@@ -1365,7 +1401,9 @@ function toggleDrawer(open) {
 function buildMarkdown() {
   const lines = [];
   lines.push(`# kaisetu review: ${DATA.title || ""}`);
-  lines.push(`- Scope: ${DATA.base || "-"} / plan: ${DATA.plan || "none"} / generated: ${DATA.generatedAt || "-"}`);
+  lines.push(HTML_MODE
+    ? `- Reviewed page: ${DATA.html || "-"} / generated: ${DATA.generatedAt || "-"}`
+    : `- Scope: ${DATA.base || "-"} / plan: ${DATA.plan || "none"} / generated: ${DATA.generatedAt || "-"}`);
   lines.push("");
   if (DATA.tagline || DATA.overview) {
     lines.push("## Overview");
@@ -1381,6 +1419,7 @@ function buildMarkdown() {
     const where = kind === "line"
       ? (m => `${m.file} ${m.line} (\`${m.code.trim()}\`)`)(commentMeta(key))
       : kind === "group" ? `[group ${key}] ${groups.find(g => g.id === key)?.title || ""}`
+      : kind === "el" ? anchorLabel(key)
       : docLabels.get(key) || key;
     const out = [`- ${flags.map(f => `[${f}] `).join("")}${where} \`${key}\``];
     for (let i = 0; i < Math.max(msgs.length, reps.length); i++) {
@@ -1442,6 +1481,20 @@ async function finishReview() {
   const payload = {
     title: DATA.title,
     finished: true,
+    html: DATA.html || null,
+    // HTML mode: comments on elements of the reviewed page (selector + the text that was there)
+    elementComments: eachThread().filter(([, kind]) => kind === "el")
+      .map(([key]) => {
+        const a = state.elAnchors[key] || {};
+        return {
+          key,
+          selector: key === "page" ? null : (a.sel || key),
+          label: anchorLabel(key),
+          text: a.text || "",
+          anchored: key === "page" ? true : !!resolveAnchorEl(a),
+          ...common(key, "el"),
+        };
+      }),
     comments: eachThread().filter(([, kind]) => kind === "line")
       .map(([key]) => ({ key, ...commentMeta(key), ...common(key, "line") })),
     groupComments: eachThread().filter(([, kind]) => kind === "group")
@@ -1491,9 +1544,19 @@ document.addEventListener("click", e => {
   if (ftName) { ftName.parentElement.classList.toggle("closed"); return; }
   const fj = e.target.closest("[data-file-jump]");
   if (fj) { document.getElementById("hunk-" + fj.dataset.fileJump)?.scrollIntoView(); return; }
+  const ex = e.target.closest("[data-elexpand]");   // caret / preview line of a resolved thread
+  if (ex) {
+    const key = ex.dataset.elexpand;
+    if (expandedEl.has(key)) expandedEl.delete(key); else expandedEl.add(key);
+    renderThreadCol();
+    return;
+  }
+  const go = e.target.closest("[data-elgoto]");   // pin or comment-card header in HTML mode
+  if (go) { focusEl(go.dataset.elgoto); return; }
   const item = e.target.closest(".drawer-item");
   if (item && !e.target.closest("button")) {
     const { gotoKey: key, gotoKind: kind } = item.dataset;
+    if (kind === "el") { focusEl(key); return; }
     const host = key ? threadHost(key, kind) : null;
     const target = kind === "group" ? document.getElementById(key)
       : kind === "line" ? host?.closest("tr") : host;
@@ -1534,6 +1597,17 @@ document.addEventListener("click", e => {
       delete done[key]; saveState(); renderThread(key, kind);
       break;
   }
+  // The element comment column owns its cards and pins, so rebuild it after the thread changed
+  if (kind === "el" && act !== "new" && act !== "reply" && act !== "edit") {
+    if (act === "resolve") expandedEl.delete(key);   // resolving folds the card away
+    if (!msgsOf(key, "el").length) {
+      // Cancelled (or emptied) before saving: drop the draft card entirely and let go of the focus
+      if (pendingEl === key) pendingEl = null;
+      if (currentEl === key) currentEl = null;
+      document.activeElement?.blur();
+    }
+    syncThreadCol();
+  }
 });
 document.getElementById("copy-btn").addEventListener("click", copySummary);
 document.getElementById("comment-count").addEventListener("click", () => toggleDrawer());
@@ -1572,12 +1646,230 @@ document.addEventListener("keydown", e => {
   if (e.key === "j" || e.key === "k") {
     const i = currentGroupIndex() + (e.key === "j" ? 1 : -1);
     if (groups[i]) document.getElementById(groups[i].id).scrollIntoView();
+  } else if (e.key === "p" && HTML_MODE) {
+    const cb = document.getElementById("pick-mode");
+    cb.checked = !cb.checked;
+    cb.dispatchEvent(new Event("change"));
   } else if (e.key === "c") {
     copySummary();
   } else if (e.key === "?") {
     document.getElementById("help-overlay").classList.add("show");
   }
 });
+
+/* ---------- HTML review mode ---------- */
+/* The reviewed page runs in an iframe served from this same origin, so its DOM is readable.
+   Nothing inside it is modified: hover outlines and pins are drawn on an overlay above it. */
+const frame = document.getElementById("target-frame");
+let pendingEl = null;    // key whose composer is open but not saved yet
+let currentEl = null;    // focused thread (highlighted pin + card)
+let elNums = new Map();  // key → pin number (page-wide comments get no pin)
+const expandedEl = new Set();   // resolved threads the human expanded again (view state only)
+let hlTimer = null, scrollRaf = 0;
+
+const frameDoc = () => { try { return frame.contentDocument; } catch (e) { return null; } };
+const pickMode = () => document.getElementById("pick-mode").checked;
+
+/* Selector that finds the element again. Anchored at the nearest id when there is one */
+function cssPath(el) {
+  const parts = [];
+  for (let node = el; node && node.nodeType === 1; node = node.parentElement) {
+    const tag = node.tagName.toLowerCase();
+    if (tag === "html") break;
+    if (node.id) { parts.unshift("#" + CSS.escape(node.id)); break; }
+    const sibs = [...(node.parentElement?.children || [])].filter(c => c.tagName === node.tagName);
+    parts.unshift(sibs.length > 1 ? `${tag}:nth-of-type(${sibs.indexOf(node) + 1})` : tag);
+    if (tag === "body") break;
+  }
+  return parts.join(" > ") || "body";
+}
+const elText = el => (el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 120);
+/* Short human-readable name for an element, e.g. h2 “How to use” */
+function describe(el) {
+  const tag = el.tagName.toLowerCase();
+  if (tag === "img") return `img ${(el.getAttribute("alt") || el.getAttribute("src") || "").slice(0, 40)}`;
+  const text = elText(el);
+  return text ? `${tag} “${text.slice(0, 44)}${text.length > 44 ? "…" : ""}”` : tag;
+}
+const anchorOf = el => ({ sel: cssPath(el), tag: el.tagName.toLowerCase(), text: elText(el), label: describe(el) });
+function anchorLabel(key) {
+  if (key === "page") return "the whole page";
+  return state.elAnchors[key]?.label || key;
+}
+/* Find the anchored element. Falls back to the same text when the page was rewritten */
+function resolveAnchorEl(a) {
+  const doc = frameDoc();
+  if (!doc || !a || !a.sel) return null;
+  try {
+    const el = doc.querySelector(a.sel);
+    if (el) return el;
+  } catch (e) {}
+  if (!a.text) return null;
+  return [...doc.querySelectorAll(a.tag || "*")].find(el => elText(el) === a.text) || null;
+}
+
+/* Commented keys in page order (page-wide first, elements whose anchor is gone last) */
+function elKeysInOrder() {
+  const keys = Object.keys(state.elComments);
+  if (pendingEl && !keys.includes(pendingEl)) keys.push(pendingEl);
+  const win = frame?.contentWindow;
+  const pos = new Map(keys.map(k => {
+    if (k === "page") return [k, -1];
+    const el = resolveAnchorEl(state.elAnchors[k]);
+    return [k, el ? el.getBoundingClientRect().top + (win?.scrollY || 0) : 1e9];
+  }));
+  return keys.sort((a, b) => (pos.get(a) - pos.get(b)) || (a < b ? -1 : 1));
+}
+
+function renderThreadCol() {
+  const list = document.getElementById("tc-list");
+  const keys = elKeysInOrder();
+  elNums = new Map();
+  let n = 0;
+  for (const k of keys) if (k !== "page") elNums.set(k, ++n);
+  if (!keys.length) {
+    list.innerHTML = `<div class="tc-empty">No comments yet.<br>Click anything in the page on the left.</div>`;
+    layoutPins();
+    return;
+  }
+  list.innerHTML = keys.map(key => {
+    const lost = key !== "page" && !resolveAnchorEl(state.elAnchors[key]);
+    const done = !!state.elResolved[key];
+    const collapsed = done && !expandedEl.has(key);
+    const last = msgsOf(key, "el").at(-1) || "";
+    return `<div class="tcard${done ? " resolved" : ""}${collapsed ? " collapsed" : ""}${currentEl === key ? " current" : ""}"
+        data-elcard="${esc(key)}">
+      <div class="tc-anchor" data-elgoto="${esc(key)}" title="${esc(state.elAnchors[key]?.sel || key)}">
+        ${done ? `<button class="caret" data-elexpand="${esc(key)}"
+          title="${collapsed ? "Expand this resolved comment" : "Collapse"}">▼</button>` : ""}
+        <span class="num">${key === "page" ? "◎" : elNums.get(key)}</span>
+        <span class="lbl">${esc(anchorLabel(key))}</span>
+        ${lost ? `<span class="lost">anchor lost</span>` : ""}
+      </div>
+      ${collapsed ? `<div class="tc-preview" data-elexpand="${esc(key)}" title="Expand">✓ ${esc(last)}</div>` : ""}
+      <div data-elwrap="${esc(key)}"></div>
+    </div>`;
+  }).join("");
+  for (const key of keys) {
+    if (state.elResolved[key] && !expandedEl.has(key)) continue;   // collapsed: nothing to render
+    renderThread(key, "el", pendingEl === key && !msgsOf(key, "el").length ? 0 : null);
+  }
+  layoutPins();
+}
+
+/* Rebuild the column after a comment was saved / deleted / resolved */
+function syncThreadCol() {
+  if (pendingEl && msgsOf(pendingEl, "el").length) pendingEl = null;
+  for (const k of Object.keys(state.elAnchors))
+    if (!msgsOf(k, "el").length && k !== pendingEl) delete state.elAnchors[k];
+  renderThreadCol();
+  refreshCounters();
+}
+
+function layoutPins() {
+  const wrap = document.getElementById("pins");
+  for (const p of wrap.querySelectorAll(".pin")) p.remove();
+  if (!frameDoc()) return;
+  const h = wrap.clientHeight, w = wrap.clientWidth;
+  for (const [key, num] of elNums) {
+    const el = resolveAnchorEl(state.elAnchors[key]);
+    if (!el) continue;
+    const r = el.getBoundingClientRect();
+    if (r.bottom < 6 || r.top > h - 2) continue;   // scrolled out of the viewport
+    const pin = document.createElement("button");
+    pin.className = "pin" + (state.elResolved[key] ? " done" : "") + (currentEl === key ? " current" : "");
+    pin.textContent = num;
+    pin.dataset.elgoto = key;
+    pin.title = anchorLabel(key);
+    pin.style.left = Math.max(2, Math.min(r.left, w - 26)) + "px";
+    pin.style.top = Math.max(2, Math.min(r.top, h - 24)) + "px";
+    wrap.appendChild(pin);
+  }
+}
+
+function showHl(el, label) {
+  const hl = document.getElementById("hl");
+  const r = el.getBoundingClientRect();
+  Object.assign(hl.style, { left: r.left + "px", top: r.top + "px", width: r.width + "px", height: r.height + "px" });
+  hl.querySelector(".tag").textContent = label;
+  hl.classList.add("show");
+}
+const hideHl = () => document.getElementById("hl").classList.remove("show");
+
+/* Jump to a thread: scroll the page to its element, flash the outline, reveal its card */
+function focusEl(key) {
+  currentEl = key;
+  document.querySelectorAll(".tcard.current").forEach(c => c.classList.remove("current"));
+  const card = document.querySelector(`[data-elcard="${CSS.escape(key)}"]`);
+  card?.classList.add("current");
+  card?.scrollIntoView({ block: "nearest" });
+  const el = key === "page" ? null : resolveAnchorEl(state.elAnchors[key]);
+  if (el) {
+    el.scrollIntoView({ block: "center", behavior: "instant" });
+    showHl(el, anchorLabel(key));
+    clearTimeout(hlTimer);
+    hlTimer = setTimeout(hideHl, 1400);
+  }
+  layoutPins();
+}
+
+function startElComment(el) {
+  const a = anchorOf(el);
+  state.elAnchors[a.sel] = a;
+  if (!msgsOf(a.sel, "el").length) pendingEl = a.sel;
+  renderThreadCol();
+  focusEl(a.sel);
+  threadHost(a.sel, "el")?.querySelector("textarea")?.focus();
+}
+
+function startPageComment() {
+  if (!msgsOf("page", "el").length) pendingEl = "page";
+  renderThreadCol();
+  focusEl("page");
+  threadHost("page", "el")?.querySelector("textarea")?.focus();
+}
+
+function initHtmlMode() {
+  const preview = document.getElementById("preview");
+  const pick = document.getElementById("pick-mode");
+  preview.classList.toggle("picking", pick.checked);
+  pick.addEventListener("change", () => {
+    preview.classList.toggle("picking", pick.checked);
+    document.getElementById("pick-hint").hidden = !pick.checked;
+    if (!pick.checked) hideHl();
+  });
+  document.getElementById("page-comment-btn").addEventListener("click", startPageComment);
+  addEventListener("resize", layoutPins);
+  frame.addEventListener("load", () => {
+    const doc = frameDoc();
+    if (!doc) return;   // cross-origin (should not happen: the page is served from /target)
+    doc.addEventListener("click", e => {
+      if (!pickMode()) return;
+      e.preventDefault();      // do not follow links or submit forms while commenting
+      e.stopPropagation();
+      const el = e.target.nodeType === 1 ? e.target : e.target.parentElement;
+      if (el) startElComment(el);
+    }, true);
+    doc.addEventListener("mouseover", e => {
+      const el = e.target.nodeType === 1 ? e.target : null;
+      if (!pickMode() || !el || el === doc.documentElement) { hideHl(); return; }
+      showHl(el, describe(el));
+    }, true);
+    doc.addEventListener("mouseleave", hideHl, true);
+    frame.contentWindow.addEventListener("scroll", () => {
+      if (scrollRaf) return;
+      scrollRaf = requestAnimationFrame(() => { scrollRaf = 0; hideHl(); layoutPins(); });
+    }, { passive: true });
+    // Restore the page's scroll position after a reload triggered by the AI fixing the HTML
+    const y = sessionStorage.getItem(SS_FRAME);
+    if (y != null) { sessionStorage.removeItem(SS_FRAME); frame.contentWindow.scrollTo(0, +y); }
+    syncThreadCol();
+  });
+  if (SERVER) frame.src = "/target";
+  else if (DATA.htmlInline) frame.srcdoc = DATA.htmlInline;   // static build (--build)
+  renderThreadCol();
+}
+if (HTML_MODE) initHtmlMode();
 
 /* ---------- init ---------- */
 for (const [key, kind] of eachThread()) renderThread(key, kind);
