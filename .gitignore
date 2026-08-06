@@ -5,3 +5,5 @@ __pycache__/
 *.replies.json
 kaisetu/example/sample-data.html
 kaisetu/example/sample-page-data.html
+kaisetu/example/sample-kidoku.html
+kaisetu/example/sample-kidoku.ja.html

@@ -1,0 +1,426 @@
+{
+  "title": "Following authors and checking their new releases",
+  "tagline": "Follow the authors you like and see from your own shelf when they have a new book out",
+  "overview": "- Add the AuthorFollow table and domain model, capped at 50 authors per user ＝ the writers you read most become a watchlist that lives with your shelf\n- Teach the Rakuten Books search to query by author, newest release first, and keep the release date ＝ that author's books line up newest first with their dates, so an unread one is obvious at a glance\n- Add four GraphQL operations — followedAuthors / authorNewReleases / followAuthor / unfollowAuthor ＝ the screen and the server now agree on how this data moves, so a phone app or a notification can reuse the same path later\n- Add the `/authors` page and a follow button next to the author name on a book ＝ you can follow straight from the book you just finished, and see every new release on one page\n- Only the owner can see or change their own follows ＝ nobody else can tell which authors you are following",
+  "generatedAt": "2026-08-06 15:27",
+  "base": "commit f0a8898 of github.com/Rasukarusan/kidoku",
+  "plan": "docs/CORE_FAN_FEATURES.md",
+  "repoRoot": null,
+  "stats": {
+    "files": 23,
+    "hunks": 30,
+    "additions": 817,
+    "deletions": 3
+  },
+  "groups": [
+    {
+      "id": "g1",
+      "title": "The data model for following an author",
+      "intent": "Lay the groundwork for storing who follows which author. The table (Prisma), the domain model that owns the rules, the persistence interface and its Prisma implementation all land together as one set.",
+      "importance": "high",
+      "tags": [
+        "feat"
+      ],
+      "impact": "Includes a DB schema change: the users table gains a relation, and the schema is defined in two places — apps/api and apps/web — because both apps talk to the same database.",
+      "sections": [
+        {
+          "id": "s1",
+          "title": "The author_follows table",
+          "explain": "A table holding a user ID and an author name (up to 120 characters). A unique constraint on (userId, authorName) means the same author cannot be registered twice. Deleting a user deletes their follows with it (onDelete: Cascade). The same definition goes into the schema.prisma of both apps/api and apps/web.",
+          "hunks": [
+            {
+              "id": "h002",
+              "file": "apps/api/prisma/schema.prisma",
+              "diff": "@@ -226,6 +227,17 @@ model template_books {\n   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)\n }\n \n+model AuthorFollow {\n+  id         Int      @id @default(autoincrement()) @db.UnsignedInt\n+  userId     String   @map(\"user_id\")\n+  authorName String   @map(\"author_name\") @db.VarChar(120)\n+  created    DateTime @default(now()) @db.DateTime(0)\n+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)\n+\n+  @@unique([userId, authorName], map: \"uniq_user_author\")\n+  @@map(\"author_follows\")\n+}\n+\n model RatingAxis {\n   id      Int          @id @default(autoincrement()) @db.UnsignedInt\n   userId  String       @map(\"user_id\")",
+              "annotations": [
+                {
+                  "type": "explain",
+                  "match": "@@unique([userId, authorName]",
+                  "text": "The constraint is enforced in the DB too, so the same author cannot be followed twice."
+                }
+              ]
+            },
+            {
+              "id": "h001",
+              "file": "apps/api/prisma/schema.prisma",
+              "diff": "@@ -106,6 +106,7 @@ model User {\n   tags               Tag[]\n   reReadings         ReReading[]\n   ratingAxes         RatingAxis[]\n+  authorFollows      AuthorFollow[]\n \n   @@map(\"users\")\n }"
+            },
+            {
+              "id": "h023",
+              "file": "apps/web/prisma/schema.prisma",
+              "diff": "@@ -226,6 +227,17 @@ model template_books {\n   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)\n }\n \n+model AuthorFollow {\n+  id         Int      @id @default(autoincrement()) @db.UnsignedInt\n+  userId     String   @map(\"user_id\")\n+  authorName String   @map(\"author_name\") @db.VarChar(120)\n+  created    DateTime @default(now()) @db.DateTime(0)\n+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)\n+\n+  @@unique([userId, authorName], map: \"uniq_user_author\")\n+  @@map(\"author_follows\")\n+}\n+\n model RatingAxis {\n   id      Int          @id @default(autoincrement()) @db.UnsignedInt\n   userId  String       @map(\"user_id\")",
+              "annotations": [
+                {
+                  "type": "question",
+                  "match": "model AuthorFollow {",
+                  "text": "The same definition appears in both apps/api and apps/web schema.prisma. Worth confirming this duplication is deliberate because both apps talk to the same database."
+                }
+              ]
+            },
+            {
+              "id": "h022",
+              "file": "apps/web/prisma/schema.prisma",
+              "diff": "@@ -106,6 +106,7 @@ model User {\n   tags               Tag[]\n   reReadings         ReReading[]\n   ratingAxes         RatingAxis[]\n+  authorFollows      AuthorFollow[]\n \n   @@map(\"users\")\n }"
+            }
+          ]
+        },
+        {
+          "id": "s2",
+          "title": "The AuthorFollow domain model",
+          "explain": "The rules for an author name are sealed inside the model. Surrounding whitespace is trimmed, and neither an empty string nor `-` is accepted as a name (kidoku stores `-` as the author of a book whose author is unknown). The 120-character limit lives here too. The constructor is private, so there are only two ways in: create for a new follow and fromDatabase for one restored from the DB — id is null on create and present on restore.",
+          "hunks": [
+            {
+              "id": "h011",
+              "file": "apps/api/src/domain/models/author-follow.ts",
+              "diff": "@@ -0,0 +1,48 @@\n+export class AuthorFollow {\n+  private constructor(\n+    private readonly _id: string | null,\n+    private readonly _userId: string,\n+    private readonly _authorName: string,\n+    private readonly _created: Date,\n+  ) {}\n+\n+  get id(): string | null {\n+    return this._id;\n+  }\n+  get userId(): string {\n+    return this._userId;\n+  }\n+  get authorName(): string {\n+    return this._authorName;\n+  }\n+  get created(): Date {\n+    return this._created;\n+  }\n+\n+  static readonly MAX_NAME_LENGTH = 120;\n+\n+  static create(params: { userId: string; authorName: string }): AuthorFollow {\n+    if (!params.userId) {\n+      throw new Error('ユーザーIDは必須です');\n+    }\n+    const name = params.authorName?.trim();\n+    if (!name || name === '-') {\n+      throw new Error('著者名は必須です');\n+    }\n+    if (name.length > AuthorFollow.MAX_NAME_LENGTH) {\n+      throw new Error(\n+        `著者名は${AuthorFollow.MAX_NAME_LENGTH}文字以内で入力してください`,\n+      );\n+    }\n+    return new AuthorFollow(null, params.userId, name, new Date());\n+  }\n+\n+  static fromDatabase(\n+    id: string,\n+    userId: string,\n+    authorName: string,\n+    created: Date,\n+  ): AuthorFollow {\n+    return new AuthorFollow(id, userId, authorName, created);\n+  }\n+}",
+              "annotations": [
+                {
+                  "type": "explain",
+                  "match": "if (!name || name === '-')",
+                  "text": "A book with an unknown author is stored with `-` as its author name, so it is rejected the same way an empty string is."
+                },
+                {
+                  "type": "explain",
+                  "match": "private constructor(",
+                  "text": "Only two ways to build one — create (new) and fromDatabase (restore) — so an instance that skipped validation cannot exist."
+                }
+              ]
+            },
+            {
+              "id": "h010",
+              "file": "apps/api/src/domain/models/author-follow.spec.ts",
+              "diff": "@@ -0,0 +1,47 @@\n+import { AuthorFollow } from './author-follow';\n+\n+describe('AuthorFollow', () => {\n+  describe('create', () => {\n+    it('著者フォローを作成できる', () => {\n+      const follow = AuthorFollow.create({\n+        userId: 'user-1',\n+        authorName: ' 村上春樹 ',\n+      });\n+      expect(follow.id).toBeNull();\n+      expect(follow.authorName).toBe('村上春樹');\n+    });\n+\n+    it('著者名が空・ハイフンの場合はエラー', () => {\n+      expect(() =>\n+        AuthorFollow.create({ userId: 'user-1', authorName: ' ' }),\n+      ).toThrow('著者名は必須です');\n+      expect(() =>\n+        AuthorFollow.create({ userId: 'user-1', authorName: '-' }),\n+      ).toThrow('著者名は必須です');\n+    });\n+\n+    it('著者名が120文字を超える場合はエラー', () => {\n+      expect(() =>\n+        AuthorFollow.create({\n+          userId: 'user-1',\n+          authorName: 'あ'.repeat(121),\n+        }),\n+      ).toThrow('著者名は120文字以内で入力してください');\n+    });\n+  });\n+\n+  describe('fromDatabase', () => {\n+    it('DBからの復元ができる', () => {\n+      const created = new Date('2026-01-01');\n+      const follow = AuthorFollow.fromDatabase(\n+        '1',\n+        'user-1',\n+        '村上春樹',\n+        created,\n+      );\n+      expect(follow.id).toBe('1');\n+      expect(follow.authorName).toBe('村上春樹');\n+      expect(follow.created).toBe(created);\n+    });\n+  });\n+});"
+            }
+          ]
+        },
+        {
+          "id": "s3",
+          "title": "Persistence interface and its Prisma implementation",
+          "explain": "Use cases depend only on the abstract class IAuthorFollowRepository; the Prisma-backed implementation sits in infrastructure and is swapped in by NestJS DI. The list comes back oldest first, and deletion keys on both id and userId. Prisma rows are never returned as they are — toEntity turns them into the domain model.",
+          "hunks": [
+            {
+              "id": "h012",
+              "file": "apps/api/src/domain/repositories/author-follow.ts",
+              "diff": "@@ -0,0 +1,11 @@\n+import { AuthorFollow } from '../models/author-follow';\n+\n+export abstract class IAuthorFollowRepository {\n+  abstract findByUserId(userId: string): Promise<AuthorFollow[]>;\n+  abstract findByUserIdAndName(\n+    userId: string,\n+    authorName: string,\n+  ): Promise<AuthorFollow | null>;\n+  abstract save(authorFollow: AuthorFollow): Promise<AuthorFollow>;\n+  abstract delete(id: number, userId: string): Promise<void>;\n+}"
+            },
+            {
+              "id": "h014",
+              "file": "apps/api/src/infrastructure/repositories/author-follow.ts",
+              "diff": "@@ -0,0 +1,57 @@\n+import { Injectable } from '@nestjs/common';\n+import { PrismaService } from '../database/prisma.service';\n+import { AuthorFollow } from '../../domain/models/author-follow';\n+import { IAuthorFollowRepository } from '../../domain/repositories/author-follow';\n+\n+@Injectable()\n+export class AuthorFollowRepository implements IAuthorFollowRepository {\n+  constructor(private readonly prisma: PrismaService) {}\n+\n+  async findByUserId(userId: string): Promise<AuthorFollow[]> {\n+    const rows = await this.prisma.authorFollow.findMany({\n+      where: { userId },\n+      orderBy: { created: 'asc' },\n+    });\n+    return rows.map((row) => this.toEntity(row));\n+  }\n+\n+  async findByUserIdAndName(\n+    userId: string,\n+    authorName: string,\n+  ): Promise<AuthorFollow | null> {\n+    const row = await this.prisma.authorFollow.findFirst({\n+      where: { userId, authorName },\n+    });\n+    return row ? this.toEntity(row) : null;\n+  }\n+\n+  async save(authorFollow: AuthorFollow): Promise<AuthorFollow> {\n+    const created = await this.prisma.authorFollow.create({\n+      data: {\n+        userId: authorFollow.userId,\n+        authorName: authorFollow.authorName,\n+      },\n+    });\n+    return this.toEntity(created);\n+  }\n+\n+  async delete(id: number, userId: string): Promise<void> {\n+    await this.prisma.authorFollow.delete({\n+      where: { id, userId },\n+    });\n+  }\n+\n+  private toEntity(row: {\n+    id: number;\n+    userId: string;\n+    authorName: string;\n+    created: Date;\n+  }): AuthorFollow {\n+    return AuthorFollow.fromDatabase(\n+      row.id.toString(),\n+      row.userId,\n+      row.authorName,\n+      row.created,\n+    );\n+  }\n+}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g2",
+      "title": "Author search and release dates from the Rakuten Books API",
+      "intent": "The new-release check needs the book search to be callable as \"by author, newest release first\". Everything the title search and the author search share — reading credentials, building parameters, shaping the response — moves into a private search(), and only the differing parts are passed in.",
+      "importance": "high",
+      "tags": [
+        "feat",
+        "refactor"
+      ],
+      "impact": "Runs through the same code as the existing title search (used when registering a book). The way parameters are assembled changed, so that existing search is in the blast radius.",
+      "sections": [
+        {
+          "id": "s4",
+          "title": "Extending the search interface",
+          "explain": "BookSearchItem gains an optional release date (salesDate) and IBookSearchRepository gains searchByAuthor. The release date is optional on purpose: only the author search fills it in.",
+          "hunks": [
+            {
+              "id": "h013",
+              "file": "apps/api/src/domain/repositories/book-search.ts",
+              "diff": "@@ -4,8 +4,12 @@ export interface BookSearchItem {\n   author: string;\n   category: string;\n   image: string;\n+  /** 発売日（著者検索時のみ設定される。例: 2026年01月15日） */\n+  salesDate?: string;\n }\n \n export abstract class IBookSearchRepository {\n   abstract searchByTitle(query: string): Promise<BookSearchItem[]>;\n+  /** 著者名で発売日の新しい順に検索する */\n+  abstract searchByAuthor(author: string): Promise<BookSearchItem[]>;\n }"
+            }
+          ]
+        },
+        {
+          "id": "s5",
+          "title": "Extracting the shared search()",
+          "explain": "The API call searchByTitle used to own moves into a private search(), leaving the caller to decide the search conditions. Title search keeps its 30 hits; author search asks for 10, newest release first (sort: -releaseDate). The response mapping now keeps salesDate, so the screen can show a release date.",
+          "hunks": [
+            {
+              "id": "h016",
+              "file": "apps/api/src/infrastructure/repositories/rakuten-books.ts",
+              "diff": "@@ -55,6 +56,17 @@ export class RakutenBooksRepository implements IBookSearchRepository {\n   private readonly logger = new Logger(RakutenBooksRepository.name);\n \n   async searchByTitle(query: string): Promise<BookSearchItem[]> {\n+    return await this.search({ title: query, hits: '30' });\n+  }\n+\n+  async searchByAuthor(author: string): Promise<BookSearchItem[]> {\n+    // 発売日の新しい順（新刊チェック用）\n+    return await this.search({ author, hits: '10', sort: '-releaseDate' });\n+  }\n+\n+  private async search(\n+    extraParams: Record<string, string>,\n+  ): Promise<BookSearchItem[]> {\n     const applicationId = process.env.RAKUTEN_APPLICATION_ID;\n     const accessKey = process.env.RAKUTEN_ACCESS_KEY;\n     if (!applicationId || !accessKey) {",
+              "annotations": [
+                {
+                  "type": "explain",
+                  "match": "sort: '-releaseDate'",
+                  "text": "Ten hits, newest release first — a new book shows up at the top."
+                }
+              ]
+            },
+            {
+              "id": "h017",
+              "file": "apps/api/src/infrastructure/repositories/rakuten-books.ts",
+              "diff": "@@ -67,9 +79,8 @@ export class RakutenBooksRepository implements IBookSearchRepository {\n     const params = new URLSearchParams({\n       applicationId: applicationId.replace(/-/g, ''),\n       accessKey,\n-      title: query,\n-      hits: '30',\n       outOfStockFlag: '1',\n+      ...extraParams,\n     });\n \n     const appUrl = process.env.RAKUTEN_APP_URL || 'https://kidoku.net';",
+              "annotations": [
+                {
+                  "type": "question",
+                  "match": "outOfStockFlag: '1'",
+                  "text": "outOfStockFlag stays a shared parameter, so the author search includes out-of-stock books. Worth confirming that is intended for a new-release check."
+                }
+              ]
+            },
+            {
+              "id": "h015",
+              "file": "apps/api/src/infrastructure/repositories/rakuten-books.ts",
+              "diff": "@@ -46,6 +46,7 @@ interface RakutenBookResponse {\n       booksGenreId: string;\n       largeImageUrl: string;\n       mediumImageUrl: string;\n+      salesDate?: string;\n     };\n   }>;\n }"
+            },
+            {
+              "id": "h018",
+              "file": "apps/api/src/infrastructure/repositories/rakuten-books.ts",
+              "diff": "@@ -112,6 +123,7 @@ export class RakutenBooksRepository implements IBookSearchRepository {\n         item.largeImageUrl?.replace('http:', 'https:') ||\n         item.mediumImageUrl?.replace('http:', 'https:') ||\n         NO_IMAGE,\n+      salesDate: item.salesDate,\n     }));\n   }\n }"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g3",
+      "title": "Use cases for the follow operations",
+      "intent": "Follow, unfollow, list and new-releases become four use cases, one responsibility each. The decisions that belong to the application — the cap, what a duplicate means — are collected here.",
+      "importance": "medium",
+      "tags": [
+        "feat",
+        "test"
+      ],
+      "impact": "Additions only; no existing use case was touched.",
+      "sections": [
+        {
+          "id": "s6",
+          "title": "Following and unfollowing",
+          "explain": "Following an author who is already followed returns the existing record, so pressing the button twice is not an error. Otherwise the current count is checked and the call fails once 50 authors are reached. Unfollowing first confirms the follow really belongs to the caller by looking it up in their own list, and throws NotFoundException when it does not — someone else's follow ID cannot be deleted. The tests cover three cases: a successful follow, an already-followed author, and going over the cap.",
+          "hunks": [
+            {
+              "id": "h006",
+              "file": "apps/api/src/application/usecases/author-follows/follow-author.ts",
+              "diff": "@@ -0,0 +1,31 @@\n+import { Injectable } from '@nestjs/common';\n+import { AuthorFollow } from '../../../domain/models/author-follow';\n+import { IAuthorFollowRepository } from '../../../domain/repositories/author-follow';\n+\n+const MAX_FOLLOWS_PER_USER = 50;\n+\n+@Injectable()\n+export class FollowAuthorUseCase {\n+  constructor(\n+    private readonly authorFollowRepository: IAuthorFollowRepository,\n+  ) {}\n+\n+  async execute(params: {\n+    userId: string;\n+    authorName: string;\n+  }): Promise<AuthorFollow> {\n+    const follow = AuthorFollow.create(params);\n+    const existing = await this.authorFollowRepository.findByUserIdAndName(\n+      params.userId,\n+      follow.authorName,\n+    );\n+    if (existing) {\n+      return existing;\n+    }\n+    const all = await this.authorFollowRepository.findByUserId(params.userId);\n+    if (all.length >= MAX_FOLLOWS_PER_USER) {\n+      throw new Error(`フォローできる著者は${MAX_FOLLOWS_PER_USER}人までです`);\n+    }\n+    return await this.authorFollowRepository.save(follow);\n+  }\n+}",
+              "annotations": [
+                {
+                  "type": "explain",
+                  "match": "if (existing) {",
+                  "text": "Already following? Return the existing record. Pressing the button twice is not an error."
+                },
+                {
+                  "type": "explain",
+                  "match": "MAX_FOLLOWS_PER_USER = 50",
+                  "text": "The per-user cap. Going over it produces the error message the screen shows verbatim."
+                }
+              ]
+            },
+            {
+              "id": "h009",
+              "file": "apps/api/src/application/usecases/author-follows/unfollow-author.ts",
+              "diff": "@@ -0,0 +1,17 @@\n+import { Injectable, NotFoundException } from '@nestjs/common';\n+import { IAuthorFollowRepository } from '../../../domain/repositories/author-follow';\n+\n+@Injectable()\n+export class UnfollowAuthorUseCase {\n+  constructor(\n+    private readonly authorFollowRepository: IAuthorFollowRepository,\n+  ) {}\n+\n+  async execute(id: number, userId: string): Promise<void> {\n+    const follows = await this.authorFollowRepository.findByUserId(userId);\n+    if (!follows.some((follow) => follow.id === String(id))) {\n+      throw new NotFoundException('フォロー中の著者が見つかりません');\n+    }\n+    await this.authorFollowRepository.delete(id, userId);\n+  }\n+}",
+              "annotations": [
+                {
+                  "type": "explain",
+                  "match": "if (!follows.some(",
+                  "text": "Checks the follow belongs to the caller before deleting. Passing someone else's follow ID gets a NotFound."
+                }
+              ]
+            },
+            {
+              "id": "h005",
+              "file": "apps/api/src/application/usecases/author-follows/follow-author.spec.ts",
+              "diff": "@@ -0,0 +1,64 @@\n+import { FollowAuthorUseCase } from './follow-author';\n+import { IAuthorFollowRepository } from '../../../domain/repositories/author-follow';\n+import { AuthorFollow } from '../../../domain/models/author-follow';\n+\n+describe('FollowAuthorUseCase', () => {\n+  let useCase: FollowAuthorUseCase;\n+  let mockRepo: jest.Mocked<IAuthorFollowRepository>;\n+\n+  beforeEach(() => {\n+    mockRepo = {\n+      findByUserId: jest.fn(),\n+      findByUserIdAndName: jest.fn(),\n+      save: jest.fn(),\n+      delete: jest.fn(),\n+    } as unknown as jest.Mocked<IAuthorFollowRepository>;\n+\n+    useCase = new FollowAuthorUseCase(mockRepo);\n+  });\n+\n+  it('著者をフォローできる', async () => {\n+    mockRepo.findByUserIdAndName.mockResolvedValue(null);\n+    mockRepo.findByUserId.mockResolvedValue([]);\n+    mockRepo.save.mockImplementation((follow) => Promise.resolve(follow));\n+\n+    const result = await useCase.execute({\n+      userId: 'user-1',\n+      authorName: '村上春樹',\n+    });\n+\n+    expect(result.authorName).toBe('村上春樹');\n+    expect(mockRepo.save).toHaveBeenCalled();\n+  });\n+\n+  it('フォロー済みの場合は既存のフォローを返す', async () => {\n+    const existing = AuthorFollow.fromDatabase(\n+      '1',\n+      'user-1',\n+      '村上春樹',\n+      new Date(),\n+    );\n+    mockRepo.findByUserIdAndName.mockResolvedValue(existing);\n+\n+    const result = await useCase.execute({\n+      userId: 'user-1',\n+      authorName: '村上春樹',\n+    });\n+\n+    expect(result).toBe(existing);\n+    expect(mockRepo.save).not.toHaveBeenCalled();\n+  });\n+\n+  it('上限(50人)を超える場合はエラー', async () => {\n+    mockRepo.findByUserIdAndName.mockResolvedValue(null);\n+    mockRepo.findByUserId.mockResolvedValue(\n+      Array.from({ length: 50 }, (_, i) =>\n+        AuthorFollow.fromDatabase(String(i), 'user-1', `著者${i}`, new Date()),\n+      ),\n+    );\n+\n+    await expect(\n+      useCase.execute({ userId: 'user-1', authorName: '新しい著者' }),\n+    ).rejects.toThrow('フォローできる著者は50人までです');\n+  });\n+});"
+            }
+          ]
+        },
+        {
+          "id": "s7",
+          "title": "Reading the list and the new releases",
+          "explain": "The list is a thin pass-through to the repository. New-releases trims the author name and returns an empty array without calling the external API when it is blank, which keeps pointless Rakuten API calls out.",
+          "hunks": [
+            {
+              "id": "h008",
+              "file": "apps/api/src/application/usecases/author-follows/get-followed-authors.ts",
+              "diff": "@@ -0,0 +1,14 @@\n+import { Injectable } from '@nestjs/common';\n+import { AuthorFollow } from '../../../domain/models/author-follow';\n+import { IAuthorFollowRepository } from '../../../domain/repositories/author-follow';\n+\n+@Injectable()\n+export class GetFollowedAuthorsUseCase {\n+  constructor(\n+    private readonly authorFollowRepository: IAuthorFollowRepository,\n+  ) {}\n+\n+  async execute(userId: string): Promise<AuthorFollow[]> {\n+    return await this.authorFollowRepository.findByUserId(userId);\n+  }\n+}"
+            },
+            {
+              "id": "h007",
+              "file": "apps/api/src/application/usecases/author-follows/get-author-new-releases.ts",
+              "diff": "@@ -0,0 +1,18 @@\n+import { Injectable } from '@nestjs/common';\n+import {\n+  IBookSearchRepository,\n+  BookSearchItem,\n+} from '../../../domain/repositories/book-search';\n+\n+@Injectable()\n+export class GetAuthorNewReleasesUseCase {\n+  constructor(private readonly bookSearchRepository: IBookSearchRepository) {}\n+\n+  async execute(authorName: string): Promise<BookSearchItem[]> {\n+    const name = authorName?.trim();\n+    if (!name) {\n+      return [];\n+    }\n+    return await this.bookSearchRepository.searchByAuthor(name);\n+  }\n+}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g4",
+      "title": "Exposing it as a GraphQL API",
+      "intent": "Make the use cases reachable from the screen: input/output types (DTOs), a resolver and the dependency wiring (Module), then register it in the app itself.",
+      "importance": "medium",
+      "tags": [
+        "feat"
+      ],
+      "impact": "Adds 2 queries and 2 mutations to the GraphQL schema, plus one registration in app.module.ts.",
+      "sections": [
+        {
+          "id": "s8",
+          "title": "Input and output types",
+          "explain": "Inputs for follow, unfollow and new-releases; outputs for a follow and for a new release. Domain models are never handed out directly — they are repacked into this layer's types first. Only the release date is nullable, because Rakuten does not always have one.",
+          "hunks": [
+            {
+              "id": "h019",
+              "file": "apps/api/src/presentation/dto/author-follow.ts",
+              "diff": "@@ -0,0 +1,59 @@\n+import {\n+  Field,\n+  ObjectType,\n+  InputType,\n+  ID,\n+  Int,\n+  GraphQLISODateTime,\n+} from '@nestjs/graphql';\n+\n+@InputType()\n+export class FollowAuthorInput {\n+  @Field()\n+  authorName: string;\n+}\n+\n+@InputType()\n+export class UnfollowAuthorInput {\n+  @Field(() => Int)\n+  id: number;\n+}\n+\n+@InputType()\n+export class GetAuthorNewReleasesInput {\n+  @Field()\n+  authorName: string;\n+}\n+\n+@ObjectType()\n+export class AuthorFollowResponse {\n+  @Field(() => ID)\n+  id: string;\n+\n+  @Field()\n+  authorName: string;\n+\n+  @Field(() => GraphQLISODateTime)\n+  created: Date;\n+}\n+\n+@ObjectType()\n+export class AuthorNewReleaseResponse {\n+  @Field()\n+  id: string;\n+\n+  @Field()\n+  title: string;\n+\n+  @Field()\n+  author: string;\n+\n+  @Field()\n+  category: string;\n+\n+  @Field()\n+  image: string;\n+\n+  @Field({ nullable: true })\n+  salesDate?: string;\n+}"
+            }
+          ]
+        },
+        {
+          "id": "s9",
+          "title": "The resolver",
+          "explain": "Four operations: followedAuthors (the caller's own follows), authorNewReleases (a given author's new books), followAuthor and unfollowAuthor. The whole resolver sits behind GqlAuthGuard, and the user ID comes from @CurrentUser — a userId sent by the client is never used.",
+          "hunks": [
+            {
+              "id": "h021",
+              "file": "apps/api/src/presentation/resolvers/author-follow.ts",
+              "diff": "@@ -0,0 +1,71 @@\n+import { UseGuards } from '@nestjs/common';\n+import { Query, Mutation, Resolver, Args } from '@nestjs/graphql';\n+import { GetFollowedAuthorsUseCase } from '../../application/usecases/author-follows/get-followed-authors';\n+import { FollowAuthorUseCase } from '../../application/usecases/author-follows/follow-author';\n+import { UnfollowAuthorUseCase } from '../../application/usecases/author-follows/unfollow-author';\n+import { GetAuthorNewReleasesUseCase } from '../../application/usecases/author-follows/get-author-new-releases';\n+import { CurrentUser } from '../../infrastructure/auth/current-user.decorator';\n+import { GqlAuthGuard } from '../../infrastructure/auth/gql-auth.guard';\n+import { AuthorFollow } from '../../domain/models/author-follow';\n+import {\n+  AuthorFollowResponse,\n+  AuthorNewReleaseResponse,\n+  FollowAuthorInput,\n+  UnfollowAuthorInput,\n+  GetAuthorNewReleasesInput,\n+} from '../dto/author-follow';\n+\n+@Resolver()\n+@UseGuards(GqlAuthGuard)\n+export class AuthorFollowResolver {\n+  constructor(\n+    private readonly getFollowedAuthorsUseCase: GetFollowedAuthorsUseCase,\n+    private readonly followAuthorUseCase: FollowAuthorUseCase,\n+    private readonly unfollowAuthorUseCase: UnfollowAuthorUseCase,\n+    private readonly getAuthorNewReleasesUseCase: GetAuthorNewReleasesUseCase,\n+  ) {}\n+\n+  @Query(() => [AuthorFollowResponse])\n+  async followedAuthors(\n+    @CurrentUser() user: { id: string },\n+  ): Promise<AuthorFollowResponse[]> {\n+    const follows = await this.getFollowedAuthorsUseCase.execute(user.id);\n+    return follows.map((follow) => this.toResponse(follow));\n+  }\n+\n+  @Query(() => [AuthorNewReleaseResponse])\n+  async authorNewReleases(\n+    @Args('input') input: GetAuthorNewReleasesInput,\n+  ): Promise<AuthorNewReleaseResponse[]> {\n+    return await this.getAuthorNewReleasesUseCase.execute(input.authorName);\n+  }\n+\n+  @Mutation(() => AuthorFollowResponse)\n+  async followAuthor(\n+    @CurrentUser() user: { id: string },\n+    @Args('input') input: FollowAuthorInput,\n+  ): Promise<AuthorFollowResponse> {\n+    const follow = await this.followAuthorUseCase.execute({\n+      userId: user.id,\n+      authorName: input.authorName,\n+    });\n+    return this.toResponse(follow);\n+  }\n+\n+  @Mutation(() => Boolean)\n+  async unfollowAuthor(\n+    @CurrentUser() user: { id: string },\n+    @Args('input') input: UnfollowAuthorInput,\n+  ): Promise<boolean> {\n+    await this.unfollowAuthorUseCase.execute(input.id, user.id);\n+    return true;\n+  }\n+\n+  private toResponse(follow: AuthorFollow): AuthorFollowResponse {\n+    return {\n+      id: follow.id ?? '',\n+      authorName: follow.authorName,\n+      created: follow.created,\n+    };\n+  }\n+}",
+              "annotations": [
+                {
+                  "type": "explain",
+                  "match": "@UseGuards(GqlAuthGuard)",
+                  "text": "The whole resolver requires authentication. The user ID comes from @CurrentUser, never from a value sent by the client."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "s10",
+          "title": "Dependency wiring and registration",
+          "explain": "The Module lists the use cases as providers and binds the abstract classes IAuthorFollowRepository / IBookSearchRepository to their implementations — those two entries are why the use cases never need to know about Prisma or the Rakuten API. Finally app.module.ts adds AuthorFollowModule to its imports.",
+          "hunks": [
+            {
+              "id": "h020",
+              "file": "apps/api/src/presentation/modules/author-follow.ts",
+              "diff": "@@ -0,0 +1,31 @@\n+import { Module } from '@nestjs/common';\n+import { AuthorFollowResolver } from '../resolvers/author-follow';\n+import { GetFollowedAuthorsUseCase } from '../../application/usecases/author-follows/get-followed-authors';\n+import { FollowAuthorUseCase } from '../../application/usecases/author-follows/follow-author';\n+import { UnfollowAuthorUseCase } from '../../application/usecases/author-follows/unfollow-author';\n+import { GetAuthorNewReleasesUseCase } from '../../application/usecases/author-follows/get-author-new-releases';\n+import { AuthorFollowRepository } from '../../infrastructure/repositories/author-follow';\n+import { RakutenBooksRepository } from '../../infrastructure/repositories/rakuten-books';\n+import { AuthModule } from '../../infrastructure/auth/auth.module';\n+import { IAuthorFollowRepository } from '../../domain/repositories/author-follow';\n+import { IBookSearchRepository } from '../../domain/repositories/book-search';\n+\n+@Module({\n+  imports: [AuthModule],\n+  providers: [\n+    AuthorFollowResolver,\n+    GetFollowedAuthorsUseCase,\n+    FollowAuthorUseCase,\n+    UnfollowAuthorUseCase,\n+    GetAuthorNewReleasesUseCase,\n+    {\n+      provide: IAuthorFollowRepository,\n+      useClass: AuthorFollowRepository,\n+    },\n+    {\n+      provide: IBookSearchRepository,\n+      useClass: RakutenBooksRepository,\n+    },\n+  ],\n+})\n+export class AuthorFollowModule {}"
+            },
+            {
+              "id": "h003",
+              "file": "apps/api/src/app.module.ts",
+              "diff": "@@ -19,6 +19,7 @@ import { QuoteModule } from './presentation/modules/quote';\n import { TagModule } from './presentation/modules/tag';\n import { ReReadingModule } from './presentation/modules/re-reading';\n import { RatingAxisModule } from './presentation/modules/rating-axis';\n+import { AuthorFollowModule } from './presentation/modules/author-follow';\n import { FollowModule } from './presentation/modules/follow';\n import { LikeModule } from './presentation/modules/like';\n import { NotificationModule } from './presentation/modules/notification';"
+            },
+            {
+              "id": "h004",
+              "file": "apps/api/src/app.module.ts",
+              "diff": "@@ -59,6 +60,7 @@ import { PurchaseModule } from './presentation/modules/purchase';\n     TagModule,\n     ReReadingModule,\n     RatingAxisModule,\n+    AuthorFollowModule,\n     FollowModule,\n     LikeModule,\n     NotificationModule,"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g5",
+      "title": "The page for followed authors and their new releases",
+      "intent": "Put adding, removing and checking new releases on one page. The GraphQL definitions live in features/author-follow/api and are imported by the components.",
+      "importance": "medium",
+      "tags": [
+        "feat"
+      ],
+      "impact": "Adds the new /authors page, which redirects to the top page when nobody is signed in.",
+      "sections": [
+        {
+          "id": "s11",
+          "title": "GraphQL query definitions",
+          "explain": "The queries and mutations matching the four server operations, plus the types the screen uses, all collected in one place. Components only import them.",
+          "hunks": [
+            {
+              "id": "h024",
+              "file": "apps/web/src/features/author-follow/api/index.ts",
+              "diff": "@@ -0,0 +1,52 @@\n+import { gql } from '@apollo/client'\n+\n+export interface AuthorFollow {\n+  id: string\n+  authorName: string\n+}\n+\n+export interface AuthorNewRelease {\n+  id: string\n+  title: string\n+  author: string\n+  category: string\n+  image: string\n+  salesDate: string | null\n+}\n+\n+export const followedAuthorsQuery = gql`\n+  query FollowedAuthors {\n+    followedAuthors {\n+      id\n+      authorName\n+    }\n+  }\n+`\n+\n+export const authorNewReleasesQuery = gql`\n+  query AuthorNewReleases($input: GetAuthorNewReleasesInput!) {\n+    authorNewReleases(input: $input) {\n+      id\n+      title\n+      author\n+      category\n+      image\n+      salesDate\n+    }\n+  }\n+`\n+\n+export const followAuthorMutation = gql`\n+  mutation FollowAuthor($input: FollowAuthorInput!) {\n+    followAuthor(input: $input) {\n+      id\n+      authorName\n+    }\n+  }\n+`\n+\n+export const unfollowAuthorMutation = gql`\n+  mutation UnfollowAuthor($input: UnfollowAuthorInput!) {\n+    unfollowAuthor(input: $input)\n+  }\n+`"
+            }
+          ]
+        },
+        {
+          "id": "s12",
+          "title": "The author-follow page",
+          "explain": "Type an author name to follow them, and the registered authors line up as tags. Pressing a tag selects that author, and only the selected author's new releases are fetched — with nothing selected the query is skipped. Pressing again deselects. Unfollowing asks for confirmation first and clears the selection if the removed author was the selected one. Server-side error messages, such as the 50-author cap, are shown verbatim in red. The page itself checks the session during SSR and sends anyone signed out back to the top.",
+          "hunks": [
+            {
+              "id": "h026",
+              "file": "apps/web/src/features/author-follow/components/AuthorsPage.tsx",
+              "diff": "@@ -0,0 +1,166 @@\n+import { useState } from 'react'\n+import { NextSeo } from 'next-seo'\n+import { useMutation, useQuery } from '@apollo/client'\n+import { Container } from '@/components/layout/Container'\n+import {\n+  AuthorFollow,\n+  AuthorNewRelease,\n+  followedAuthorsQuery,\n+  authorNewReleasesQuery,\n+  followAuthorMutation,\n+  unfollowAuthorMutation,\n+} from '../api'\n+\n+// フォロー中の著者と、その新刊をチェックするページ\n+export const AuthorsPage: React.FC = () => {\n+  const { data, refetch } = useQuery<{ followedAuthors: AuthorFollow[] }>(\n+    followedAuthorsQuery\n+  )\n+  const [followAuthor, { loading: following }] =\n+    useMutation(followAuthorMutation)\n+  const [unfollowAuthor] = useMutation(unfollowAuthorMutation)\n+  const [name, setName] = useState('')\n+  const [selected, setSelected] = useState('')\n+  const [error, setError] = useState('')\n+\n+  const authors = data?.followedAuthors ?? []\n+\n+  const { data: releasesData, loading: releasesLoading } = useQuery<{\n+    authorNewReleases: AuthorNewRelease[]\n+  }>(authorNewReleasesQuery, {\n+    variables: { input: { authorName: selected } },\n+    skip: !selected,\n+  })\n+  const releases = releasesData?.authorNewReleases ?? []\n+\n+  const onFollow = async () => {\n+    setError('')\n+    if (!name.trim()) return\n+    try {\n+      await followAuthor({ variables: { input: { authorName: name } } })\n+      setName('')\n+      await refetch()\n+    } catch (e) {\n+      setError(\n+        e instanceof Error && e.message ? e.message : 'フォローに失敗しました'\n+      )\n+    }\n+  }\n+\n+  const onUnfollow = async (author: AuthorFollow) => {\n+    if (!window.confirm(`「${author.authorName}」のフォローを外しますか？`))\n+      return\n+    await unfollowAuthor({ variables: { input: { id: Number(author.id) } } })\n+    if (selected === author.authorName) setSelected('')\n+    await refetch()\n+  }\n+\n+  return (\n+    <Container className=\"px-4 py-8 sm:px-10 sm:py-10\">\n+      <NextSeo title=\"著者フォロー | kidoku\" noindex />\n+      <h2 className=\"mb-2 text-2xl font-bold\">著者フォロー</h2>\n+      <p className=\"mb-6 text-sm text-gray-500\">\n+        気になる著者をフォローしておくと、最新の刊行をここでまとめてチェックできます。あなただけに表示されます。\n+      </p>\n+\n+      <div className=\"mb-6 flex gap-2\">\n+        <input\n+          value={name}\n+          placeholder=\"著者名を入力（例: 村上春樹）\"\n+          className=\"flex-1 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition focus:border-slate-400 focus:bg-white sm:max-w-80\"\n+          onChange={(e) => setName(e.target.value)}\n+          onKeyDown={(e) => {\n+            if (e.key === 'Enter') onFollow()\n+          }}\n+        />\n+        <button\n+          className=\"rounded-md bg-slate-800 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:opacity-50\"\n+          disabled={following}\n+          onClick={onFollow}\n+        >\n+          フォロー\n+        </button>\n+      </div>\n+      {error && <div className=\"mb-4 text-xs text-red-600\">{error}</div>}\n+\n+      {authors.length === 0 && (\n+        <p className=\"text-sm text-gray-400\">\n+          まだフォロー中の著者がいません。よく読む著者を追加してみましょう。\n+        </p>\n+      )}\n+\n+      <div className=\"mb-8 flex flex-wrap gap-2\">\n+        {authors.map((author) => (\n+          <span\n+            key={author.id}\n+            className={`flex items-center gap-1 rounded-full px-4 py-1.5 text-sm transition ${\n+              author.authorName === selected\n+                ? 'bg-slate-800 text-white'\n+                : 'bg-slate-100 text-gray-700'\n+            }`}\n+          >\n+            <button\n+              onClick={() =>\n+                setSelected(\n+                  author.authorName === selected ? '' : author.authorName\n+                )\n+              }\n+            >\n+              {author.authorName}\n+            </button>\n+            <button\n+              className=\"ml-1 opacity-50 transition hover:opacity-100\"\n+              onClick={() => onUnfollow(author)}\n+              aria-label={`${author.authorName}のフォローを外す`}\n+            >\n+              ×\n+            </button>\n+          </span>\n+        ))}\n+      </div>\n+\n+      {selected && (\n+        <section>\n+          <h3 className=\"mb-4 text-sm font-bold text-gray-700\">\n+            「{selected}」の最新刊行\n+          </h3>\n+          {releasesLoading && (\n+            <p className=\"text-sm text-gray-400\">確認中...</p>\n+          )}\n+          {!releasesLoading && releases.length === 0 && (\n+            <p className=\"text-sm text-gray-400\">\n+              刊行情報が見つかりませんでした。\n+            </p>\n+          )}\n+          <div className=\"space-y-3\">\n+            {releases.map((release) => (\n+              <div\n+                key={`${release.id}-${release.title}`}\n+                className=\"flex items-center gap-4 rounded-lg border border-slate-200 bg-white p-4\"\n+              >\n+                <img\n+                  src={release.image}\n+                  alt={release.title}\n+                  className=\"h-20 w-14 rounded object-cover shadow-sm\"\n+                />\n+                <div className=\"min-w-0\">\n+                  <div className=\"truncate text-sm font-bold text-gray-800\">\n+                    {release.title}\n+                  </div>\n+                  <div className=\"text-xs text-gray-500\">\n+                    {release.author} ・ {release.category}\n+                  </div>\n+                  {release.salesDate && (\n+                    <div className=\"mt-1 text-xs text-teal-700\">\n+                      発売日: {release.salesDate}\n+                    </div>\n+                  )}\n+                </div>\n+              </div>\n+            ))}\n+          </div>\n+        </section>\n+      )}\n+    </Container>\n+  )\n+}",
+              "annotations": [
+                {
+                  "type": "explain",
+                  "match": "skip: !selected",
+                  "text": "No new-release query goes out until an author is selected, to avoid pointless calls to the Rakuten API."
+                }
+              ]
+            },
+            {
+              "id": "h030",
+              "file": "apps/web/src/pages/authors/index.tsx",
+              "diff": "@@ -0,0 +1,14 @@\n+import { AuthorsPage } from '@/features/author-follow/components/AuthorsPage'\n+import { authOptions } from '@/pages/api/auth/[...nextauth]'\n+import { getServerSession } from 'next-auth/next'\n+export default AuthorsPage\n+\n+export async function getServerSideProps(context) {\n+  const session = await getServerSession(context.req, context.res, authOptions)\n+  if (!session) {\n+    return {\n+      redirect: { destination: '/' },\n+    }\n+  }\n+  return { props: {} }\n+}"
+            }
+          ]
+        },
+        {
+          "id": "s13",
+          "title": "The follow toggle button",
+          "explain": "It fetches the follow list and switches its label and action depending on whether this author is in it — \"Following\" unfollows, otherwise it follows. For a book whose author is blank or `-` the button is not rendered at all. After each action the list is refetched so the display matches.",
+          "hunks": [
+            {
+              "id": "h025",
+              "file": "apps/web/src/features/author-follow/components/AuthorFollowButton.tsx",
+              "diff": "@@ -0,0 +1,54 @@\n+import { useMutation, useQuery } from '@apollo/client'\n+import {\n+  AuthorFollow,\n+  followedAuthorsQuery,\n+  followAuthorMutation,\n+  unfollowAuthorMutation,\n+} from '../api'\n+\n+interface Props {\n+  author: string\n+}\n+\n+// 著者フォローのトグルボタン（本詳細の著者名の横に表示）\n+export const AuthorFollowButton: React.FC<Props> = ({ author }) => {\n+  const name = author?.trim()\n+  const { data, refetch } = useQuery<{ followedAuthors: AuthorFollow[] }>(\n+    followedAuthorsQuery,\n+    { skip: !name || name === '-' }\n+  )\n+  const [followAuthor, { loading: following }] =\n+    useMutation(followAuthorMutation)\n+  const [unfollowAuthor, { loading: unfollowing }] = useMutation(\n+    unfollowAuthorMutation\n+  )\n+\n+  if (!name || name === '-') return null\n+\n+  const follow = data?.followedAuthors.find((f) => f.authorName === name)\n+\n+  const onToggle = async () => {\n+    if (follow) {\n+      await unfollowAuthor({\n+        variables: { input: { id: Number(follow.id) } },\n+      })\n+    } else {\n+      await followAuthor({ variables: { input: { authorName: name } } })\n+    }\n+    await refetch()\n+  }\n+\n+  return (\n+    <button\n+      className={`ml-2 rounded-full border px-3 py-0.5 text-xs transition ${\n+        follow\n+          ? 'border-teal-600 bg-teal-50 text-teal-700'\n+          : 'border-gray-300 text-gray-500 hover:bg-gray-50'\n+      }`}\n+      disabled={following || unfollowing}\n+      onClick={onToggle}\n+    >\n+      {follow ? 'フォロー中' : '著者をフォロー'}\n+    </button>\n+  )\n+}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g6",
+      "title": "Ways in from the existing screens",
+      "intent": "A new page nobody can find is a new page nobody uses, so add two entry points: the book detail (next to the author name) and the settings page.",
+      "importance": "low",
+      "tags": [
+        "feat"
+      ],
+      "impact": "A few added lines in existing components.",
+      "sections": [
+        {
+          "id": "s14",
+          "title": "A button next to the author name on a book",
+          "explain": "The follow button sits beside the author name in the read-book modal. It only appears on your own shelf (isMine), so it never shows up while you are looking at someone else's.",
+          "hunks": [
+            {
+              "id": "h029",
+              "file": "apps/web/src/features/sheet/components/BookDetailReadModal.tsx",
+              "diff": "@@ -190,7 +191,10 @@ export const BookDetailReadModal: React.FC<Props> = ({\n \n           <div className=\"mb-6 text-center\">\n             <h1 className=\"mb-2 text-2xl font-bold\">{book.title}</h1>\n-            <p className=\"mb-4 text-gray-600\">{book.author}</p>\n+            <p className=\"mb-4 text-gray-600\">\n+              {book.author}\n+              {isMine && <AuthorFollowButton author={book.author} />}\n+            </p>\n \n             <div className=\"flex justify-center space-x-8 text-sm text-gray-500\">\n               <div>",
+              "annotations": [
+                {
+                  "type": "explain",
+                  "match": "{isMine &&",
+                  "text": "The button only appears on your own shelf; it is not rendered on someone else's."
+                }
+              ]
+            },
+            {
+              "id": "h028",
+              "file": "apps/web/src/features/sheet/components/BookDetailReadModal.tsx",
+              "diff": "@@ -40,6 +40,7 @@ import { QuoteSection } from '@/features/quote/components/QuoteSection'\n import { TagSection } from '@/features/tag/components/TagSection'\n import { ReReadingSection } from '@/features/re-reading/components/ReReadingSection'\n import { RatingSection } from '@/features/rating/components/RatingSection'\n+import { AuthorFollowButton } from '@/features/author-follow/components/AuthorFollowButton'\n import { mediaLabel } from '@/utils/media'\n \n interface Props {"
+            }
+          ]
+        },
+        {
+          "id": "s15",
+          "title": "A link from the settings page",
+          "explain": "One more card on the settings page, styled like the rating-axes one, pointing at /authors.",
+          "hunks": [
+            {
+              "id": "h027",
+              "file": "apps/web/src/features/settings/ProfilePage.tsx",
+              "diff": "@@ -218,6 +218,20 @@ export const ProfilePage: React.FC<Props> = ({ name, image }) => {\n         </Link>\n       </section>\n \n+      {/* 著者フォロー */}\n+      <section className=\"mb-6 rounded-lg border border-slate-200 bg-white p-6\">\n+        <h3 className=\"mb-1 text-sm font-bold text-gray-700\">著者フォロー</h3>\n+        <p className=\"mb-4 text-xs text-gray-500\">\n+          気になる著者をフォローして、最新の刊行をまとめてチェックできます。\n+        </p>\n+        <Link\n+          href=\"/authors\"\n+          className=\"inline-block rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-slate-50\"\n+        >\n+          フォロー中の著者を見る\n+        </Link>\n+      </section>\n+\n       {/* 評価軸 */}\n       <section className=\"mb-6 rounded-lg border border-slate-200 bg-white p-6\">\n         <h3 className=\"mb-1 text-sm font-bold text-gray-700\">評価軸</h3>"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

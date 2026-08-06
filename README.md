@@ -6,7 +6,7 @@ English | [日本語](README.ja.md)
 
 *kaisetu* (解説, Japanese for "commentary") is an agent skill for [Claude Code](https://code.claude.com) and Codex.
 Run `/kaisetu` and your coding agent turns a large diff into a local review page:
-changes **grouped by intent**, **sorted by risk**, **explained inline** — with a comment system that
+changes **grouped by intent**, **sorted by importance**, **explained inline** — with a comment system that
 sends your feedback straight back into the agent session.
 
 AI agents produce diffs faster than humans can review them. kaisetu doesn't try to review for you —
@@ -25,21 +25,25 @@ together, which parts deserve attention first, and what the author (the AI) was 
 
 ## Features
 
-- **Two-audience overview** — every summary line is written as
-  *"explanation an engineer understands ＝ outcome a non-engineer understands"*,
-  so both readers get it at a glance
+- **See what the change does at a glance** — the headline is one sentence anyone can read, and every
+  summary line under it is written as *"explanation an engineer understands ＝ outcome a non-engineer
+  understands"*, with the outcome on its own line. You get the whole shape before reading any diff
 - **Groups by intent, not by file** — a rename plus its import fixes is one group; groups are
-  displayed in risk order (high → medium → low) so you read the dangerous parts first
-- **Side-by-side diff** — old on the left, new on the right, with deletions lined up against the
-  additions that replaced them; the header's *Split* toggle switches to unified and is remembered
+  displayed in importance order (high → medium → low) so you read what matters most first
+- **A file tree per group** — see which directories a group actually touched. Whether the
+  `controller` / `service` / `infrastructure` counterparts all landed, whether anything strayed outside
+  the layers you expected — **the shape tells you if the change follows the architecture, before you
+  read a line of it**
 - **Inline AI notes** — per-feature explanations at the top of each section, line-level notes and
   *questions* (spots where even the AI couldn't tell the intent) directly on diff lines
+- **Ask and fix without leaving the review** — write "why is this here?" and the agent answers; write
+  "fix it" and it does. Answers come back as threads in the page, so a self-review never breaks stride.
+  Say an explanation is unclear and it gets rewritten, swapped in within seconds, comments intact
 - **Comment anything** — hover any diff line, the overview, a group's intent, or an AI explanation
   and press `+`. Comments are auto-saved (localStorage + server-side state)
-- **Threaded round-trips** — the agent's answers appear inside the page; press *Reply* to continue
-  a thread and *Finish review* to send it back. Unanswered threads are counted in the header
-- **Self-rewriting explanations** — comment "this is unclear" on an explanation and the agent rewrites
-  it; the page swaps in the new text within seconds, keeping your comments in place
+- **Side-by-side diff** — old on the left, new on the right, with deletions lined up against the
+  additions that replaced them. Drag the boundary to resize; the header's *Split* toggle switches to
+  unified and is remembered
 - **HTML review** — hand it an `.html` file instead of a diff and you get the *rendered page* with a
   comment layer: click any element, leave a comment, the agent fixes the HTML and the page reloads with
   the fix while your comments stay anchored. No grouping, no explanations — just look and comment
@@ -53,11 +57,17 @@ No agent needed — try the UI with the bundled sample data:
 ```bash
 git clone https://github.com/Rasukarusan/kaisetu.git
 cd kaisetu
-python3 kaisetu/scripts/serve.py kaisetu/example/sample-data.json       # diff review
-python3 kaisetu/scripts/serve.py kaisetu/example/sample-page-data.json  # HTML review
+python3 kaisetu/scripts/serve.py kaisetu/example/sample-kidoku.json      # a real 23-file commit
+python3 kaisetu/scripts/serve.py kaisetu/example/sample-kidoku.ja.json   # the same review, in Japanese
+python3 kaisetu/scripts/serve.py kaisetu/example/sample-data.json        # diff review, minimal
+python3 kaisetu/scripts/serve.py kaisetu/example/sample-page-data.json   # HTML review
 ```
 
 Your browser opens the review page. Press `?` for keyboard shortcuts.
+
+`sample-kidoku.json` is a real review of [kidoku](https://github.com/Rasukarusan/kidoku) commit
+`f0a8898` — 23 files, 30 hunks, grouped into 6 intents. Since review text is written in whatever
+language you are talking to the agent in, the `.ja.json` file is the same commit reviewed in Japanese.
 
 ## Install as a skill
 
@@ -99,7 +109,8 @@ Link the same directories into your Codex skills location (e.g. `~/.agents/skill
 | `kaisetu/schema.md` | Spec of `review-data.json`, the only thing the LLM generates |
 | `kaisetu/template.html` | The review page (self-contained, no external resources) |
 | `kaisetu/scripts/serve.py` | Local server (Python 3 stdlib only); `--build` emits static HTML |
-| `kaisetu/example/sample-data.json` | Demo data (diff review) |
+| `kaisetu/example/sample-kidoku.json` | Demo data: a real commit, reviewed (`.ja.json` = same review in Japanese) |
+| `kaisetu/example/sample-data.json` | Demo data (diff review, minimal) |
 | `kaisetu/example/sample-page-data.json` | Demo data (HTML review) + `sample-page.html` |
 | `kaisetu-list/SKILL.md` | Companion skill: list and reopen past reviews |
 
@@ -113,13 +124,14 @@ The agent writes `review-data.json` (groups → sections → hunks, with explana
 Because the server re-reads `review-data.json` on every request, the agent can rewrite an explanation
 you flagged and the page rebuilds itself — your comments stay anchored to hunk IDs, not to the prose.
 
-Review content is generated in whatever language you converse with your agent in.
+Review content is generated in whatever language you converse with your agent in, and the page's own
+labels follow it — a Japanese review renders as 解説 / メモ / 疑問 rather than AI note / Note / Question.
 
 ## Design principles
 
 - **The human judges; the AI presents.** The skill explicitly forbids the agent from critiquing or
   proposing fixes in the review. It presents facts: what changed, why, blast radius.
-- **Risk is a reading order, not a verdict.** high / medium / low tells you where to spend attention.
+- **Importance is a reading order, not a verdict.** high / medium / low tells you where to spend attention.
 - **Don't pollute the target repo.** All working files live under `~/.kaisetu/`.
 - **Static-friendly.** `serve.py --build` produces a single static HTML you can attach to a PR or
   send to a teammate.
