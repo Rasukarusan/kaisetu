@@ -762,7 +762,7 @@ try {
   </div>
   <div class="doc-comment" data-dcwrap="overview"></div>
 
-  <div class="sec-label">01 / CHANGE GROUPS (BY RISK)</div>
+  <div class="sec-label">01 / CHANGE GROUPS (BY IMPORTANCE)</div>
   <div class="meta-line" id="meta"></div>
   <ol class="group-index" id="index"></ol>
 
@@ -844,6 +844,46 @@ const VERSION = "__REVIEW_VERSION__"; // review-data.json version (used to detec
    No grouping and no explanations — the page is shown in an iframe and commented on element by element. */
 const HTML_MODE = !!(DATA.html || DATA.htmlInline);
 if (HTML_MODE) document.body.classList.add("mode-html");
+
+/* ---------- language ---------- */
+/* The review itself is written in whatever language the user talks to the agent in, so the labels
+   around it follow. `lang` in the data wins; otherwise Japanese characters in the prose decide.
+   English is the default: its wording stays as the literals in this file, and only Japanese is
+   looked up — a missing entry falls back to English rather than breaking. */
+const LANG = DATA.lang || (/[\u3040-\u30ff\u4e00-\u9fff]/.test(
+  `${DATA.title || ""}${DATA.tagline || ""}${DATA.overview || ""}`) ? "ja" : "en");
+const JA = {
+  "Note": "メモ", "Question": "疑問", "AI note": "解説",
+  "High": "高", "Medium": "中", "Low": "低", "hunks": "hunk",
+  "Comment": "コメント", "Group comment": "グループへのコメント", "Group": "グループ",
+  "COMMENT — on this line": "コメント — この行について",
+  "COMMENT — on this whole group (intent wording, design, …)":
+    "コメント — このグループ全体について（意図の書き方・設計など）",
+  "COMMENT — on": "コメント —",
+  "EDIT — revise this message": "編集 — このメッセージを直す",
+  "REPLY — reply to the answer": "返信 — 回答に返信する",
+  "Write… (⌘Enter to save, Esc to cancel)": "コメントを書く…（⌘Enterで保存、Escで取消）",
+  "Cancel": "取消", "Save": "保存", "Edit": "編集", "Reply": "返信", "You": "あなた",
+  "✓ Resolve": "✓ 解決", "↺ Reopen": "↺ 戻す", "Reopen": "戻す", "Delete": "削除",
+  "awaiting": "未回答", "resolved": "解決済み", "replies": "返信", "answers": "回答",
+  "No comments yet": "まだコメントはありません",
+  "Awaiting AI reply — press “Finish review” to send": "AIの回答待ち — 「レビューを終える」で送信",
+  "Copy path": "パスをコピー", "copy": "コピー", "none": "なし",
+  "Scope": "対象", "plan": "計画", "Generated": "生成",
+  "anchor lost": "参照先なし",
+  "Copied: ": "コピーしました: ",
+  "Results sent back to the session. The page stays usable":
+    "結果をセッションに送りました。このページはそのまま使えます",
+  "Resent the updated results": "更新した結果を送り直しました",
+  "Failed to send (is the server stopped?)": "送信できませんでした（サーバが止まっていませんか）",
+  "Applied the rewritten explanations": "書き直された解説を反映しました",
+  "Nothing to copy": "コピーするものがありません",
+  "Copied the summary": "まとめをコピーしました",
+  "Copy failed": "コピーできませんでした",
+};
+const L = s => (LANG === "ja" && JA[s]) || s;
+/* "N hunks" in English, "N hunk" in Japanese: the count leads either way, only the noun differs */
+const nOf = (count, en, ja) => LANG === "ja" ? `${count} ${ja}` : `${count} ${en}`;
 /* Diff layout: side by side (default) or unified. Remembered like the theme */
 const SPLIT_KEY = "kaisetu:split";
 let SPLIT = true;
@@ -909,11 +949,14 @@ function saveState() {
 }
 
 /* ---------- data prep ---------- */
-const RISK = {
-  high:   { rank: 0, label: "High",   cls: "high",   dots: "●●●" },
-  medium: { rank: 1, label: "Medium", cls: "medium", dots: "●●○" },
-  low:    { rank: 2, label: "Low",    cls: "low",    dots: "●○○" },
+/* How important a group is to read — the reading order, not a verdict on the code */
+const LEVELS = {
+  high:   { rank: 0, label: L("High"),   cls: "high",   dots: "●●●" },
+  medium: { rank: 1, label: L("Medium"), cls: "medium", dots: "●●○" },
+  low:    { rank: 2, label: L("Low"),    cls: "low",    dots: "●○○" },
 };
+/* `risk` is the older name for the same field, so data written before the rename still sorts */
+const levelOf = g => LEVELS[g.importance || g.risk] || LEVELS.low;
 const isTestFile = f => /(\.test\.|\.spec\.|_test\.|__tests__|(^|\/)tests?\/)/.test(f);
 
 /* Build file-tree HTML from byFile (Map: file → hunk IDs). Shared by the sidebar and per-group mini tree */
@@ -942,19 +985,19 @@ function treeHtml(byFile) {
       const ids = byFile.get(f.file);
       html += `<li class="ft-file${isTestFile(f.file) ? " is-test" : ""}" data-file-jump="${esc(ids[0])}" title="${esc(f.file)}">
         <span class="n">${esc(f.name)}</span>
-        <button class="copy-path" data-copy="${esc(f.file)}" title="Copy path">copy</button>
+        <button class="copy-path" data-copy="${esc(f.file)}" title="${L('Copy path')}">${L("copy")}</button>
         <span class="cnt">${ids.length}</span></li>`;
     }
     return html + "</ul>";
   };
   return render(root);
 }
-const ANN = { explain: "Note", question: "Question" };
+const ANN = { explain: L("Note"), question: L("Question") };
 /* Rewrite-request target → display name. Group/section entries are registered while rendering */
 const docLabels = new Map([["overview", "Overview"]]);
 
 const groups = [...(DATA.groups || [])].sort(
-  (a, b) => (RISK[a.risk]?.rank ?? 9) - (RISK[b.risk]?.rank ?? 9)
+  (a, b) => levelOf(a).rank - levelOf(b).rank
 );
 
 function esc(s) {
@@ -997,7 +1040,7 @@ const st = DATA.stats;
 const statsEl = document.getElementById("stats");
 if (st) {
   statsEl.innerHTML =
-    `${st.files ?? "?"} files / ${st.hunks ?? "?"} hunks <ins>+${st.additions ?? "?"}</ins> <del>−${st.deletions ?? "?"}</del>`;
+    `${nOf(st.files ?? "?", "files", "ファイル")} / ${nOf(st.hunks ?? "?", "hunks", "hunk")} <ins>+${st.additions ?? "?"}</ins> <del>−${st.deletions ?? "?"}</del>`;
 } else if (HTML_MODE) {
   statsEl.textContent = DATA.html || "HTML";   // which page is under review
   statsEl.title = DATA.html || "";
@@ -1006,9 +1049,9 @@ if (st) {
 }
 const planHtml = DATA.plan
   ? (SERVER ? `<a href="/plan" target="_blank" title="Open the plan">${esc(DATA.plan)}</a>` : esc(DATA.plan))
-  : "none";
+  : L("none");
 document.getElementById("meta").innerHTML =
-  `<b>Scope:</b> ${esc(DATA.base || "-")} &nbsp;&nbsp;<b>plan:</b> ${planHtml} &nbsp;&nbsp;<b>Generated:</b> ${esc(DATA.generatedAt || "-")}`;
+  `<b>${L("Scope")}:</b> ${esc(DATA.base || "-")} &nbsp;&nbsp;<b>${L("plan")}:</b> ${planHtml} &nbsp;&nbsp;<b>${L("Generated")}:</b> ${esc(DATA.generatedAt || "-")}`;
 /* Split "technical change ＝ what happens as a result" on the full-width ＝ and put the right side
    (the plain-language outcome) on its own line, led by an arrow — the arrow reads as "and so",
    which is what the right side actually says.
@@ -1114,7 +1157,7 @@ function renderGroups() {
   indexEl.innerHTML = "";
   detailEl.innerHTML = "";
   groups.forEach((g, gi) => {
-  const risk = RISK[g.risk] || RISK.low;
+  const level = levelOf(g);
   const sections = g.sections || (g.hunks ? [{ hunks: g.hunks }] : []);
   const allHunks = sections.flatMap(s => s.hunks || []);
   const nQuestion = allHunks.reduce(
@@ -1122,7 +1165,7 @@ function renderGroups() {
 
   /* --- index card --- */
   const li = document.createElement("li");
-  li.className = `index-card risk-${risk.cls}`;
+  li.className = `index-card risk-${level.cls}`;
   li.style.animationDelay = (gi * 45) + "ms";
   li.innerHTML = `
     <div class="txt">
@@ -1130,17 +1173,18 @@ function renderGroups() {
       <div class="s">${esc(g.intent || "")}</div>
     </div>
     <div class="badges">
-      ${nQuestion ? `<span class="chip question">${nQuestion} question${nQuestion === 1 ? "" : "s"}</span>` : ""}
+      ${nQuestion ? `<span class="chip question">${LANG === "ja" ? `疑問 ${nQuestion}件`
+        : `${nQuestion} question${nQuestion === 1 ? "" : "s"}`}</span>` : ""}
       ${(g.tags || []).map(t => `<span class="chip tag">${esc(t)}</span>`).join("")}
-      <span class="chip hunks">${allHunks.length} hunks</span>
-      <span class="risk-badge ${risk.cls}"><span class="dots">${risk.dots}</span>${risk.label}</span>
+      <span class="chip hunks">${nOf(allHunks.length, "hunks", "hunk")}</span>
+      <span class="risk-badge ${level.cls}"><span class="dots">${level.dots}</span>${level.label}</span>
     </div>`;
   li.addEventListener("click", () => document.getElementById(g.id).scrollIntoView());
   indexEl.appendChild(li);
 
   /* --- detail card --- */
   const art = document.createElement("article");
-  art.className = `group risk-${risk.cls}`;
+  art.className = `group risk-${level.cls}`;
   art.id = g.id;
   art.dataset.gid = g.id;
   if (allHunks.length && allHunks.every(h => isTestFile(h.file))) {
@@ -1153,7 +1197,7 @@ function renderGroups() {
   head.title = "Click to collapse";
   head.innerHTML = `
     <span class="gcaret">▼</span>
-    <span class="risk-badge ${risk.cls}"><span class="dots">${risk.dots}</span>${risk.label}</span>
+    <span class="risk-badge ${level.cls}"><span class="dots">${level.dots}</span>${level.label}</span>
     <h2>${esc(g.title)}</h2>`;
   head.addEventListener("click", e => {
     if (e.target.closest("button")) return;
@@ -1217,7 +1261,7 @@ function renderGroups() {
     hh.className = "hunk-head";
     hh.title = "Click to collapse";
     hh.innerHTML = `<span class="caret">▼</span><span class="hid">${esc(h.id)}</span><span class="file">${esc(h.file)}</span>
-      <button class="copy-path" data-copy="${esc(h.file)}" title="Copy path">copy</button>
+      <button class="copy-path" data-copy="${esc(h.file)}" title="${L('Copy path')}">${L("copy")}</button>
       <span class="range">${esc((parsed.header || "").replace(/^@@ | @@.*$/g, m2 => m2 === "@@ " ? "" : ""))}</span>`;
     hh.addEventListener("click", e => {
       if (e.target.closest("button")) return;
@@ -1236,7 +1280,7 @@ function renderGroups() {
       return tr;
     };
     const calloutHtml = a => `<div class="callout ${esc(a.type || "explain")}">
-      <span class="label">${ANN[a.type] || "Note"}</span><span>${esc(a.text || "")}</span></div>`;
+      <span class="label">${ANN[a.type] || L("Note")}</span><span>${esc(a.text || "")}</span></div>`;
     /* A comment belongs to the side its line is on, so in split view the slot only spans that
        side — the thread sits under the line it is about instead of straddling both columns */
     const slotRow = (key, side) => {
@@ -1266,7 +1310,7 @@ function renderGroups() {
 
     if (pendingExplain) {
       tbody.appendChild(wideRow(`<div class="callout explain prose-target">
-        <span class="label">AI note</span><span>${esc(pendingExplain)}</span>
+        <span class="label">${L("AI note")}</span><span>${esc(pendingExplain)}</span>
         <button class="pbtn" data-act="new" data-kind="doc" data-key="${esc(sDocKey)}"
           title="Comment on this explanation">+</button></div>`));
       // Comments on this explanation render right below it
@@ -1387,18 +1431,19 @@ function threadHost(key, kind) {
 }
 
 function editorHtml(key, kind, idx, value, mode) {
-  const head = mode === "edit" ? "EDIT — revise this message"
-    : mode === "reply" ? "REPLY — reply to the answer"
-    : kind === "doc" ? `COMMENT — on ${docLabels.get(key) || key}`
-    : kind === "el" ? `COMMENT — on ${anchorLabel(key)}`
-    : kind === "group" ? "COMMENT — on this whole group (intent wording, design, …)" : "COMMENT — on this line";
+  const head = mode === "edit" ? L("EDIT — revise this message")
+    : mode === "reply" ? L("REPLY — reply to the answer")
+    : kind === "doc" ? `${L("COMMENT — on")} ${docLabels.get(key) || key}`
+    : kind === "el" ? `${L("COMMENT — on")} ${anchorLabel(key)}`
+    : kind === "group" ? L("COMMENT — on this whole group (intent wording, design, …)")
+      : L("COMMENT — on this line");
   const attrs = `data-kind="${kind}" data-key="${esc(key)}" data-idx="${idx}"`;
   return `<div class="comment-editor">
     <div class="ce-head">${head}</div>
-    <textarea placeholder="Write… (⌘Enter to save, Esc to cancel)">${esc(value || "")}</textarea>
+    <textarea placeholder="${L('Write… (⌘Enter to save, Esc to cancel)')}">${esc(value || "")}</textarea>
     <div class="ce-actions">
-      <button class="mini-btn" data-act="cancel" ${attrs}>Cancel</button>
-      <button class="mini-btn primary" data-act="save" ${attrs}>Save</button>
+      <button class="mini-btn" data-act="cancel" ${attrs}>${L("Cancel")}</button>
+      <button class="mini-btn primary" data-act="save" ${attrs}>${L("Save")}</button>
     </div></div>`;
 }
 
@@ -1442,9 +1487,10 @@ function renderThread(key, kind, editAt = null) {
       body += `<div class="msg edit">${editorHtml(key, kind, i, msgs[i], i < msgs.length ? "edit" : "reply")}</div>`;
     } else if (msgs[i] != null) {
       body += `<div class="msg human">
-        <div class="mhead"><span class="who">${i === 0 ? "You" : "You (reply " + i + ")"}</span>
+        <div class="mhead"><span class="who">${i === 0 ? L("You")
+            : LANG === "ja" ? `あなた（${L("replies")} ${i}）` : `You (reply ${i})`}</span>
           <span class="spacer"></span>
-          <button class="link-btn" data-act="edit" ${attrs} data-idx="${i}">Edit</button></div>
+          <button class="link-btn" data-act="edit" ${attrs} data-idx="${i}">${L("Edit")}</button></div>
         <div class="txt">${esc(msgs[i])}</div></div>`;
     }
     if (reps[i] != null) {
@@ -1454,14 +1500,14 @@ function renderThread(key, kind, editAt = null) {
     }
   }
   const foot = editAt != null ? "" : `<div class="cv-foot">
-    <button class="mini-btn" data-act="reply" ${attrs} data-idx="${msgs.length}">Reply</button>
-    ${isAwaiting(key, kind) ? `<span class="pending">Awaiting AI reply — press “Finish review” to send</span>` : ""}</div>`;
-  const headLabel = kind === "group" ? "Group comment" : "Comment";
+    <button class="mini-btn" data-act="reply" ${attrs} data-idx="${msgs.length}">${L("Reply")}</button>
+    ${isAwaiting(key, kind) ? `<span class="pending">${L("Awaiting AI reply — press “Finish review” to send")}</span>` : ""}</div>`;
+  const headLabel = kind === "group" ? L("Group comment") : L("Comment");
   host.innerHTML = `<div class="comment-view">
     <div class="cv-head"><span class="label">${headLabel}</span>
       <span class="spacer"></span>
-      <button class="link-btn" data-act="${done ? "unresolve" : "resolve"}" ${attrs}>${done ? "↺ Reopen" : "✓ Resolve"}</button>
-      <button class="link-btn danger" data-act="del" ${attrs}>Delete</button></div>
+      <button class="link-btn" data-act="${done ? "unresolve" : "resolve"}" ${attrs}>${done ? L("↺ Reopen") : L("✓ Resolve")}</button>
+      <button class="link-btn danger" data-act="del" ${attrs}>${L("Delete")}</button></div>
     ${body}${foot}</div>`;
   host.querySelector("textarea")?.focus();
 }
@@ -1484,7 +1530,7 @@ function eachThread() {
 function threadWhere(key, kind) {
   if (kind === "el") return anchorLabel(key);
   if (kind === "doc") return docLabels.get(key) || key;
-  if (kind === "group") return "Group: " + (groups.find(g => g.id === key)?.title || key);
+  if (kind === "group") return L("Group") + ": " + (groups.find(g => g.id === key)?.title || key);
   const m = commentMeta(key);
   return `${m.file} ${m.line}`;
 }
@@ -1493,9 +1539,10 @@ function refreshCounters() {
   const all = eachThread();
   const nResolved = all.filter(([k, kind]) => doneStore(kind)[k]).length;
   const nAwaiting = all.filter(([k, kind]) => !doneStore(kind)[k] && isAwaiting(k, kind)).length;
-  const extra = [nAwaiting ? `awaiting ${nAwaiting}` : "", nResolved ? `resolved ${nResolved}` : ""].filter(Boolean);
+  const extra = [nAwaiting ? `${L("awaiting")} ${nAwaiting}` : "",
+                 nResolved ? `${L("resolved")} ${nResolved}` : ""].filter(Boolean);
   document.getElementById("comment-count").textContent =
-    `Comments: ${all.length}` + (extra.length ? ` (${extra.join(" / ")})` : "");
+    `${L("Comment")}: ${all.length}` + (extra.length ? ` (${extra.join(" / ")})` : "");
   if (document.getElementById("drawer").classList.contains("open")) renderDrawer();
 }
 
@@ -1506,17 +1553,17 @@ function renderDrawer() {
     const done = !!doneStore(kind)[key];
     const where = threadWhere(key, kind);
     const turns = [
-      msgs.length > 1 ? `replies ${msgs.length - 1}` : "",
-      reps.length ? `answers ${reps.length}` : "",
-      !done && isAwaiting(key, kind) ? "awaiting" : "",
+      msgs.length > 1 ? `${L("replies")} ${msgs.length - 1}` : "",
+      reps.length ? `${L("answers")} ${reps.length}` : "",
+      !done && isAwaiting(key, kind) ? L("awaiting") : "",
     ].filter(Boolean).join(" / ");
     return `<div class="drawer-item${done ? " resolved" : ""}" data-goto-kind="${kind}" data-goto-key="${esc(key)}">
       <div class="where"><span class="w">${done ? "✓ " : ""}${esc(where)}</span>
-        ${done ? `<button class="link-btn" data-act="unresolve" data-kind="${kind}" data-key="${esc(key)}">Reopen</button>` : ""}</div>
+        ${done ? `<button class="link-btn" data-act="unresolve" data-kind="${kind}" data-key="${esc(key)}">${L("Reopen")}</button>` : ""}</div>
       <div class="body">${esc(msgs[msgs.length - 1])}</div>
       ${turns ? `<div class="turns">${esc(turns)}</div>` : ""}</div>`;
   });
-  list.innerHTML = items.length ? items.join("") : `<div class="drawer-empty">No comments yet</div>`;
+  list.innerHTML = items.length ? items.join("") : `<div class="drawer-empty">${L("No comments yet")}</div>`;
 }
 
 function toggleDrawer(open) {
@@ -1641,12 +1688,13 @@ async function finishReview() {
   };
   try {
     await fetch("/api/finish", { method: "POST", body: JSON.stringify(payload) });
-    toast(sent ? "Resent the updated results" : "Results sent back to the session. The page stays usable");
+    toast(L(sent ? "Resent the updated results"
+      : "Results sent back to the session. The page stays usable"));
     sent = true;
     btn.classList.add("sent");
     btn.textContent = "Finish review (resend)";
   } catch (e) {
-    toast("Failed to send (is the server stopped?)");
+    toast(L("Failed to send (is the server stopped?)"));
   } finally {
     btn.disabled = false;
   }
@@ -1674,7 +1722,7 @@ refreshThemeBtn();
 /* ---------- events ---------- */
 document.addEventListener("click", e => {
   const cp = e.target.closest("[data-copy]");
-  if (cp) { copyText(cp.dataset.copy, "Copied: " + cp.dataset.copy); return; }
+  if (cp) { copyText(cp.dataset.copy, L("Copied: ") + cp.dataset.copy); return; }
   const ftName = e.target.closest(".ft-dir > .ft-name");
   if (ftName) { ftName.parentElement.classList.toggle("closed"); return; }
   const fj = e.target.closest("[data-file-jump]");
@@ -1928,7 +1976,9 @@ function renderThreadCol() {
   let n = 0;
   for (const k of keys) if (k !== "page") elNums.set(k, ++n);
   if (!keys.length) {
-    list.innerHTML = `<div class="tc-empty">No comments yet.<br>Click anything in the page on the left.</div>`;
+    list.innerHTML = (LANG === "ja"
+      ? `<div class="tc-empty">まだコメントはありません。<br>左のページの気になる部分をクリックしてください。</div>`
+      : `<div class="tc-empty">No comments yet.<br>Click anything in the page on the left.</div>`);
     layoutPins();
     return;
   }
@@ -1945,7 +1995,7 @@ function renderThreadCol() {
           title="${esc(key === "page" ? "the whole page" : state.elAnchors[key]?.sel || key)}"
           >${key === "page" ? "◎" : elNums.get(key)}</button>
         <span class="lbl">${esc(anchorLabel(key))}</span>
-        ${lost ? `<span class="lost">anchor lost</span>` : ""}
+        ${lost ? `<span class="lost">${L("anchor lost")}</span>` : ""}
       </div>
       ${folded ? `<div class="tc-preview" data-elfold="${esc(key)}">${done ? "✓ " : ""}${esc(last)}</div>` : ""}
       <div data-elwrap="${esc(key)}"></div>
@@ -2088,6 +2138,69 @@ function initHtmlMode() {
 if (HTML_MODE) initHtmlMode();
 
 /* ---------- init ---------- */
+/* The chrome written straight into the markup is English; a Japanese review swaps it out here.
+   Only the fixed furniture — the prose itself already comes in the right language. */
+function localizeChrome() {
+  if (LANG !== "ja") return;
+  const txt = (sel, s) => { const el = document.querySelector(sel); if (el) el.textContent = s; };
+  const ttl = (sel, s) => { const el = document.querySelector(sel); if (el) el.title = s; };
+  // A checkbox label: replace the text node after the box, keep the box itself
+  const opt = (id, s, title) => {
+    const box = document.getElementById(id);
+    if (!box) return;
+    box.nextSibling.textContent = " " + s;
+    box.closest("label").title = title;
+  };
+  opt("split-mode", "左右に分割", "差分を左右に並べる（左が変更前・右が変更後）");
+  opt("hide-tests", "テストを隠す", "テストファイルの hunk を隠す");
+  opt("pick-mode", "コメントモード", "ページの要素をクリックしてコメントする（切るとページを普通に操作できる）");
+  txt("#copy-btn", "まとめをコピー");
+  txt("#finish-btn", "レビューを終える");
+  ttl("#finish-btn", "結果をエージェントのセッションに送り返す");
+  ttl("#comment-count", "コメント一覧を開く");
+  ttl("#theme-btn", "ダークモードの切替");
+  ttl("#help-btn", "ヘルプ");
+  txt(".ft-label", "ファイル");
+  ttl("#drawer-close", "閉じる");
+  txt("#drawer .ttl", "コメント");
+  txt("#threadcol .ttl", "コメント");
+  txt("#page-comment-btn", "ページ全体について");
+  ttl("#page-comment-btn", "ページ全体に対してコメントする");
+  txt("#pick-hint", "ページの気になる部分をクリックするとコメントできます");
+  ttl("#target-frame", "レビュー対象のページ");
+  txt("#update-bar span", "解説が書き直されました");
+  txt("#update-apply", "ページに反映");
+  ttl('[data-kind="doc"][data-key="overview"]', "概要にコメントする");
+  const secs = ["00 / 概要", "01 / 変更グループ（重要度順）", "02 / グループの詳細"];
+  document.querySelectorAll("main .sec-label").forEach((el, i) => { if (secs[i]) el.textContent = secs[i]; });
+  document.querySelector("#help-overlay .modal").innerHTML = `
+    <div class="mono-label">HELP</div>
+    <h3>使い方</h3>
+    <table>
+      <tr class="diff-only"><td class="key">クリック</td><td>差分の行・概要・意図・解説にカーソルを合わせ、出てくる + でコメントする</td></tr>
+      <tr class="diff-only"><td class="key">コピー</td><td>ファイル名の隣のボタンでそのパスをコピーする</td></tr>
+      <tr class="diff-only"><td class="key">j / k</td><td>次 / 前のグループへ移動</td></tr>
+      <tr class="diff-only"><td class="key">左右に分割</td><td>左右に並べる（左が変更前・右が変更後）か1列にするかの切替。境界はドラッグで動かせる（ダブルクリックで中央に戻る）。選んだ状態は記憶される</td></tr>
+      <tr class="html-only"><td class="key">クリック</td><td>ページの要素をクリックするとその要素にコメントできる</td></tr>
+      <tr class="html-only"><td class="key">ピン</td><td>コメントした要素には番号付きのピンが付く。ピンとコメントは相互に行き来できる</td></tr>
+      <tr class="html-only"><td class="key">p</td><td>コメントモードの切替（切るとページのリンクやボタンを普通に押せる）</td></tr>
+      <tr class="html-only"><td class="key">コメント</td><td>ヘッダーのカウンタでコメント欄を出し入れする</td></tr>
+      <tr><td class="key">c</td><td>まとめをコピー</td></tr>
+      <tr><td class="key">⌘Enter</td><td>コメント編集中に保存</td></tr>
+      <tr><td class="key">Esc</td><td>コメント編集の取消 / コメント一覧を閉じる</td></tr>
+    </table>
+    <p class="html-only" style="font-size:13px;color:var(--ink-soft)">コメントはクリックした要素に紐づきます。
+    AIがHTMLを直すと、このページは数秒で新しい表示に入れ替わり、コメントはその要素に付いたまま残ります
+    （要素そのものが無くなった場合は「参照先なし」と表示されます）。</p>
+    <p style="font-size:13px;color:var(--ink-soft)">コメントは自動で保存されます。
+    「レビューを終える」で結果がエージェントのセッションに送られます（送ったあともページはそのまま使えます）。
+    回答が付いたら「返信」でスレッドを続け、もう一度「レビューを終える」を押すと送り返されます。
+    指摘を受けてAIが概要や解説を書き直すと、このページは自動で新しい内容に入れ替わります（コメントは残ります）。
+    別のセッション（Codex など）に渡すときは「まとめをコピー」を使ってください。</p>
+    <div class="close-row"><button class="mini-btn"
+      onclick="document.getElementById('help-overlay').classList.remove('show')">閉じる</button></div>`;
+}
+localizeChrome();
 for (const [key, kind] of eachThread()) renderThread(key, kind);
 refreshCounters();
 // Right after rebuilding to apply rewritten explanations, restore the scroll position
@@ -2096,7 +2209,7 @@ refreshCounters();
   if (y != null) { sessionStorage.removeItem(SS_SCROLL); window.scrollTo(0, +y); }
   if (sessionStorage.getItem(SS_UPDATED)) {
     sessionStorage.removeItem(SS_UPDATED);
-    toast("Applied the rewritten explanations");
+    toast(L("Applied the rewritten explanations"));
   }
 }
 </script>
