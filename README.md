@@ -6,8 +6,6 @@ English | [日本語](README.ja.md)
 https://github.com/user-attachments/assets/d9aa9e8a-78bb-4940-b91a-99abae4b015e
 
 
-**A review UI for AI-generated diffs — the AI organizes and explains, the human judges.**
-
 **A review UI that reshapes AI-generated diffs into something a human can actually read.**
 
 A confession first: I wasn't really reading my AI's diffs. Open a 23-file diff and you quietly
