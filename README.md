@@ -3,21 +3,28 @@
 English | [日本語](README.ja.md)
 
 
-
 https://github.com/user-attachments/assets/d9aa9e8a-78bb-4940-b91a-99abae4b015e
-
 
 
 **A review UI for AI-generated diffs — the AI organizes and explains, the human judges.**
 
-*kaisetu* (解説, Japanese for "commentary") is an agent skill for [Claude Code](https://code.claude.com) and Codex.
-Run `/kaisetu` and your coding agent turns a large diff into a local review page:
-changes **grouped by intent**, **sorted by importance**, **explained inline** — with a comment system that
-sends your feedback straight back into the agent session.
+**A review UI that reshapes AI-generated diffs into something a human can actually read.**
 
-AI agents produce diffs faster than humans can review them. kaisetu doesn't try to review for you —
-judging the change is still your job. It removes everything else: figuring out which hunks belong
-together, which parts deserve attention first, and what the author (the AI) was trying to do.
+A confession first: I wasn't really reading my AI's diffs. Open a 23-file diff and you quietly
+close the tab. Scroll past the green and red, call it "reviewed", approve with a "probably fine".
+And before the review is even done, the AI has the next diff ready.
+
+Where to start reading, which changes belong together, what the author was trying to do.
+A human PR comes with an author who fills that in, even verbally. An AI diff doesn't.
+
+*kaisetu* (解説, Japanese for "commentary") is an agent skill for
+[Claude Code](https://code.claude.com) and Codex that fills that gap. Run `/kaisetu` and your
+coding agent turns a large diff into a local review page: changes **grouped by intent**,
+**sorted by importance**, **explained inline**, with comments on the page going straight back
+into the agent session.
+
+I built kaisetu to make this self-review easier. I wanted to read my own AI-written diffs with
+the same calm I bring to a teammate's PR. I've stopped reading diffs top to bottom in file order.
 
 ```
 /kaisetu
@@ -29,32 +36,11 @@ together, which parts deserve attention first, and what the author (the AI) was 
   → reply, resubmit, repeat — until you're done
 ```
 
-## Features
+## Three features that make self-review easier
 
-- **See what the change does at a glance** — the headline is one sentence anyone can read, and every
-  summary line under it is written as *"explanation an engineer understands ＝ outcome a non-engineer
-  understands"*, with the outcome on its own line. You get the whole shape before reading any diff
-- **Groups by intent, not by file** — a rename plus its import fixes is one group; groups are
-  displayed in importance order (high → medium → low) so you read what matters most first
-- **A file tree per group** — see which directories a group actually touched. Whether the
-  `controller` / `service` / `infrastructure` counterparts all landed, whether anything strayed outside
-  the layers you expected — **the shape tells you if the change follows the architecture, before you
-  read a line of it**
-- **Inline AI notes** — per-feature explanations at the top of each section, line-level notes and
-  *questions* (spots where even the AI couldn't tell the intent) directly on diff lines
-- **Ask and fix without leaving the review** — write "why is this here?" and the agent answers; write
-  "fix it" and it does. Answers come back as threads in the page, so a self-review never breaks stride.
-  Say an explanation is unclear and it gets rewritten, swapped in within seconds, comments intact
-- **Comment anything** — hover any diff line, the overview, a group's intent, or an AI explanation
-  and press `+`. Comments are auto-saved (localStorage + server-side state)
-- **Side-by-side diff** — old on the left, new on the right, with deletions lined up against the
-  additions that replaced them. Drag the boundary to resize; the header's *Split* toggle switches to
-  unified and is remembered
-- **HTML review** — hand it an `.html` file instead of a diff and you get the *rendered page* with a
-  comment layer: click any element, leave a comment, the agent fixes the HTML and the page reloads with
-  the fix while your comments stay anchored. No grouping, no explanations — just look and comment
-- **Dark mode** — follows your OS, with a manual toggle
-- **Zero dependencies** — one HTML template + a Python 3 standard-library server. No npm, no build
+- Wondering "where do I even start reading?" → **changes come grouped**
+- Squinting at a hunk thinking "so what is this trying to do?" → **there's a one-line explanation**
+- Piling up "I'll ask about this later" notes → **ask the AI right there**
 
 ## Quick start (demo)
 
@@ -106,41 +92,6 @@ comment element by element, with numbered pins marking what you flagged.
 
 Link the same directories into your Codex skills location (e.g. `~/.agents/skills/`) and invoke with
 `$kaisetu`. The skill instructions are written to work with either agent.
-
-## How it works
-
-| File | Role |
-|---|---|
-| `kaisetu/SKILL.md` | The skill itself — how the agent collects, groups, and explains the diff |
-| `kaisetu/schema.md` | Spec of `review-data.json`, the only thing the LLM generates |
-| `kaisetu/template.html` | The review page (self-contained, no external resources) |
-| `kaisetu/scripts/serve.py` | Local server (Python 3 stdlib only); `--build` emits static HTML |
-| `kaisetu/example/sample-kidoku.json` | Demo data: a real commit, reviewed (`.ja.json` = same review in Japanese) |
-| `kaisetu/example/sample-data.json` | Demo data (diff review, minimal) |
-| `kaisetu/example/sample-page-data.json` | Demo data (HTML review) + `sample-page.html` |
-| `kaisetu-list/SKILL.md` | Companion skill: list and reopen past reviews |
-
-The agent writes `review-data.json` (groups → sections → hunks, with explanations) and starts
-`serve.py`. The page and the agent communicate through files in `~/.kaisetu/<repo>/<timestamp>/`:
-
-- `review-data.result.json` — written when you press *Finish review*; the agent watches for it
-- `review-data.replies.json` — the agent's answers; the page polls and threads them
-- `review-data.state.json` — auto-saved comments, so the review survives reloads and other browsers
-
-Because the server re-reads `review-data.json` on every request, the agent can rewrite an explanation
-you flagged and the page rebuilds itself — your comments stay anchored to hunk IDs, not to the prose.
-
-Review content is generated in whatever language you converse with your agent in, and the page's own
-labels follow it — a Japanese review renders as 解説 / メモ / 疑問 rather than AI note / Note / Question.
-
-## Design principles
-
-- **The human judges; the AI presents.** The skill explicitly forbids the agent from critiquing or
-  proposing fixes in the review. It presents facts: what changed, why, blast radius.
-- **Importance is a reading order, not a verdict.** high / medium / low tells you where to spend attention.
-- **Don't pollute the target repo.** All working files live under `~/.kaisetu/`.
-- **Static-friendly.** `serve.py --build` produces a single static HTML you can attach to a PR or
-  send to a teammate.
 
 ## License
 
