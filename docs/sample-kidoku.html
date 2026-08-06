@@ -251,7 +251,7 @@ body.hide-tests :is(.hunk.is-test, .section-head.is-test, .ft-file.is-test,
 
 /* ---------- file tree (left sidebar) ---------- */
 .filetree {
-  position: fixed; top: 53px; left: 0; bottom: 0; width: 250px; z-index: 40;
+  position: fixed; top: var(--topbar-h, 53px); left: 0; bottom: 0; width: 250px; z-index: 40;
   overflow-y: auto; padding: 18px 12px 30px;
   border-right: 1px solid var(--border);
   font-size: 12.5px;
@@ -365,7 +365,7 @@ main { max-width: 1060px; margin: 0 auto; padding: 28px 24px 64px; }
   border-left: 4px solid var(--gray);
   box-shadow: var(--shadow);
   margin: 0 0 26px; overflow: hidden;
-  scroll-margin-top: 70px;
+  scroll-margin-top: calc(var(--topbar-h, 53px) + 17px);
 }
 .group.risk-high { border-left-color: var(--risk-high); }
 .group.risk-medium { border-left-color: var(--risk-medium); }
@@ -410,7 +410,7 @@ main { max-width: 1060px; margin: 0 auto; padding: 28px 24px 64px; }
 /* ---------- hunks / diff ---------- */
 .hunk {
   margin: 12px 20px; border: 1px solid var(--border); border-radius: 10px;
-  scroll-margin-top: 60px;
+  scroll-margin-top: calc(var(--topbar-h, 53px) + 7px);
 }
 .hunk-head {
   display: flex; align-items: baseline; gap: 12px;
@@ -418,7 +418,7 @@ main { max-width: 1060px; margin: 0 auto; padding: 28px 24px 64px; }
   font-family: var(--mono); font-size: 12.5px;
   border-bottom: 1px solid var(--border);
   border-radius: 10px 10px 0 0;
-  position: sticky; top: 53px; z-index: 5;
+  position: sticky; top: var(--topbar-h, 53px); z-index: 5;
   cursor: pointer; user-select: none;
 }
 .hunk.collapsed .hunk-head { border-radius: 10px; border-bottom: none; }
@@ -641,7 +641,7 @@ td.wide { padding: 6px 14px 6px 4.8em; }
 /* ---------- HTML review mode (comment on the rendered page itself) ---------- */
 body.mode-html .diff-only, body:not(.mode-html) .html-only { display: none; }
 body.mode-html main { display: none; }
-.htmlview { display: flex; align-items: stretch; height: calc(100vh - 53px); }
+.htmlview { display: flex; align-items: stretch; height: calc(100vh - var(--topbar-h, 53px)); }
 .preview { position: relative; flex: 1; min-width: 0; background: var(--surface-3); }
 .preview iframe { display: block; width: 100%; height: 100%; border: 0; background: #fff; }
 .preview.picking iframe { cursor: crosshair; }
@@ -717,12 +717,61 @@ body.mode-html main { display: none; }
 .tcard.current .tc-anchor .lbl { color: var(--blue); }
 
 .toast {
-  position: fixed; top: 62px; right: 24px; transform: translateY(-8px);
+  position: fixed; top: calc(var(--topbar-h, 53px) + 9px); right: 24px; transform: translateY(-8px);
   background: var(--tip-bg); color: var(--tip-ink); border-radius: 9px; padding: 9px 18px;
   font-size: 13px; opacity: 0; pointer-events: none; z-index: 90;
   transition: all .25s ease;
 }
 .toast.show { opacity: 1; transform: translateY(0); }
+
+/* ---------- touch devices: controls that appear on hover must be reachable by tap ---------- */
+@media (hover: none) {
+  .cbtn, .prose-target .pbtn { opacity: .45; }
+  .copy-path { opacity: .55; }
+}
+
+/* ---------- phones / narrow screens ---------- */
+@media (max-width: 768px) {
+  .topbar { flex-wrap: wrap; gap: 8px 12px; padding: 10px 12px; }
+  .topbar h1 { flex: 1 1 0; min-width: 55%; font-size: 14.5px; }
+  main { padding: 20px 12px 56px; }
+  .sec-label { margin: 26px 0 12px; }
+  .overview .tagline { font-size: 17px; }
+  /* The + sits in the left margin on desktop; there is no margin here, so move it in */
+  #overview-block .pbtn { left: auto; right: 0; top: 2px; }
+  .overview { padding-right: 26px; }
+  .index-card { flex-direction: column; align-items: stretch; gap: 8px; padding: 12px 14px; }
+  .index-card .s { white-space: normal; }
+  .index-card .badges { flex-wrap: wrap; }
+  .group-head { padding: 14px 14px 0; }
+  .group.g-collapsed .group-head { padding-bottom: 14px; }
+  .intent-row { flex-direction: column; gap: 10px; }
+  .gtree { max-width: 100%; width: 100%; }
+  .group-comment { padding: 0 14px 12px; }
+  .section-head { padding: 14px 14px 10px; }
+  .section-head .line1 { flex-wrap: wrap; }
+  .section-head .files { flex-basis: 100%; margin-left: 0; white-space: normal; }
+  .hunk { margin: 10px 8px; }
+  .hunk-head { flex-wrap: wrap; gap: 6px 10px; padding: 8px 10px; }
+  table.diff { font-size: 12px; }
+  td.ln { width: 2.6em; min-width: 2.6em; padding: 0 5px; }
+  td.code { padding-right: 8px; }
+  td.wide { padding: 6px 8px; }
+  .comment-editor textarea { font-size: 16px; }  /* below 16px iOS zooms in on focus */
+  .overlay { padding: 14px; }
+  .modal { padding: 20px 18px; }
+  .drawer { width: 100vw; max-width: 100vw; }
+  /* HTML review mode: page on top, comments below, instead of side by side */
+  .htmlview { flex-direction: column; }
+  .preview { min-height: 0; }
+  .threadcol {
+    flex: none; width: 100%; max-width: none; height: 45%;
+    border-left: none; border-top: 1px solid var(--border);
+  }
+  .update-bar { left: 12px; right: 12px; transform: translateY(12px); }
+  .update-bar.show { transform: translateY(0); }
+  .toast { left: 12px; right: 12px; text-align: center; }
+}
 </style>
 <script>
 /* Apply the saved theme before first paint to avoid a flash */
@@ -884,10 +933,13 @@ const JA = {
 const L = s => (LANG === "ja" && JA[s]) || s;
 /* "N hunks" in English, "N hunk" in Japanese: the count leads either way, only the noun differs */
 const nOf = (count, en, ja) => LANG === "ja" ? `${count} ${ja}` : `${count} ${en}`;
-/* Diff layout: side by side (default) or unified. Remembered like the theme */
+/* Diff layout: side by side (default on wide screens) or unified. Remembered like the theme */
 const SPLIT_KEY = "kaisetu:split";
-let SPLIT = true;
-try { SPLIT = localStorage.getItem(SPLIT_KEY) !== "0"; } catch (e) {}
+let SPLIT = matchMedia("(min-width: 768px)").matches;
+try {
+  const savedSplit = localStorage.getItem(SPLIT_KEY);
+  if (savedSplit != null) SPLIT = savedSplit !== "0";
+} catch (e) {}
 document.body.classList.toggle("split", SPLIT);
 
 /* ---------- state (localStorage + server autosave) ---------- */
@@ -1718,6 +1770,13 @@ themeBtn.addEventListener("click", () => {
 });
 darkMedia.addEventListener("change", refreshThemeBtn);
 refreshThemeBtn();
+
+/* The topbar wraps on narrow screens, so everything that sticks below it reads its real height */
+const topbarEl = document.querySelector(".topbar");
+const syncTopbarH = () =>
+  document.documentElement.style.setProperty("--topbar-h", topbarEl.offsetHeight + "px");
+new ResizeObserver(syncTopbarH).observe(topbarEl);
+syncTopbarH();
 
 /* ---------- events ---------- */
 document.addEventListener("click", e => {
