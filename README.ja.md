@@ -33,24 +33,6 @@ kaisetu を作ったのは、このセルフレビューをやりやすくする
 - 「この変更、結局なにがしたいの？」と首をかしげること → **一言説明あります**
 - 「あとで聞こう」と付箋を溜めること → **その場でAIに聞けます**
 
-## クイックスタート（デモ）
-
-エージェントなしで、同梱のサンプルデータで UI を試せます:
-
-```bash
-git clone https://github.com/Rasukarusan/kaisetu.git
-cd kaisetu
-python3 kaisetu/scripts/serve.py kaisetu/example/sample-kidoku.ja.json   # 実在コミット23ファイルのレビュー
-python3 kaisetu/scripts/serve.py kaisetu/example/sample-kidoku.json      # 同じレビューの英語版
-python3 kaisetu/scripts/serve.py kaisetu/example/sample-data.json        # diff レビュー（最小例）
-python3 kaisetu/scripts/serve.py kaisetu/example/sample-page-data.json   # HTML レビュー
-```
-
-ブラウザにレビュー画面が開きます。`?` でキーボードショートカット一覧。
-
-`sample-kidoku.ja.json` は [kidoku](https://github.com/Rasukarusan/kidoku) のコミット `f0a8898`
-（23ファイル・30 hunk）を6つの意図にグループ化した実物のレビューです。解説文はエージェントと
-会話している言語で生成されるため、同じコミットを英語でレビューしたものが `sample-kidoku.json` です。
 
 ## スキルとしてインストール
 
