@@ -461,9 +461,20 @@ body:not(.split) tr.line:hover td.code { box-shadow: inset 0 0 0 999px var(--row
 
 /* ---------- split (side-by-side) diff: old on the left, new on the right ---------- */
 /* Colours live on the cells here, not the row, since the two sides differ */
-body.split td.code { width: 50%; }
+/* The boundary is draggable, so both code columns take their width from one variable on <body>.
+   4.8em is the line-number + sign gutter that sits left of each code cell */
+body.split td.code.l { width: calc(var(--split, 50%) - 4.8em); }
+body.split td.code.r { width: calc(100% - var(--split, 50%) - 4.8em); }
 body.split td.code:hover { box-shadow: inset 0 0 0 999px var(--row-hover); }
 td.gap { border-left: 1px solid var(--border-strong); }
+/* A grab strip over the boundary itself: drag to resize, double-click to go back to half */
+body.split td.ln.gap { position: relative; }
+body.split td.ln.gap::before {
+  content: ""; position: absolute; left: -5px; top: 0; bottom: 0; width: 10px;
+  cursor: col-resize; z-index: 3;
+}
+body.split td.ln.gap:hover { border-left: 1px solid var(--blue); margin-left: -1px; }
+body.resizing, body.resizing * { cursor: col-resize !important; user-select: none; }
 td.s-add.code, td.s-add.sign { background: var(--add-bg); }
 td.s-add.sign { color: var(--green); }
 td.s-add.ln { background: var(--add-gutter); border-right-color: var(--add-gutter-border); }
@@ -785,7 +796,7 @@ try {
       <tr class="diff-only"><td class="key">click</td><td>Hover a diff line, the overview, an intent, or an AI note — press the + to comment</td></tr>
       <tr class="diff-only"><td class="key">copy</td><td>The button next to a file name copies its path</td></tr>
       <tr class="diff-only"><td class="key">j / k</td><td>Jump to the next / previous group</td></tr>
-      <tr class="diff-only"><td class="key">Split</td><td>Side-by-side (old left, new right) or unified — the choice is remembered</td></tr>
+      <tr class="diff-only"><td class="key">Split</td><td>Side-by-side (old left, new right) or unified — drag the boundary between the sides to resize it, double-click to reset. The choice is remembered</td></tr>
       <tr class="html-only"><td class="key">click</td><td>Click any element in the page to comment on it</td></tr>
       <tr class="html-only"><td class="key">pin</td><td>A numbered pin marks each commented element; click a pin or a comment to jump between them</td></tr>
       <tr class="html-only"><td class="key">p</td><td>Toggle comment mode (turn it off to click links and buttons in the page)</td></tr>
@@ -860,6 +871,7 @@ let state = {
   comments: {}, groupComments: {}, docComments: {}, elComments: {},
   resolved: {}, groupResolved: {}, docResolved: {}, elResolved: {},
   elAnchors: {},   // HTML mode: key → {sel, tag, text, label} (how to find the element again)
+  commentSides: {},   // split view: key → "left" | "right" for a context line, commented on either side
 };
 let replies = { comments: {}, groupComments: {}, docComments: {}, elComments: {} }; // AI answers (polled from /api/replies)
 // Restore from the newer of localStorage and the server-embedded state.json (compared via _savedAt)
@@ -871,7 +883,8 @@ let replies = { comments: {}, groupComments: {}, docComments: {}, elComments: {}
     ? serverState : (localState || serverState);
   if (pick) state = Object.assign(state, pick);
   for (const k of ["comments", "groupComments", "docComments", "elComments",
-                   "resolved", "groupResolved", "docResolved", "elResolved", "elAnchors"])
+                   "resolved", "groupResolved", "docResolved", "elResolved", "elAnchors",
+                   "commentSides"])
     state[k] ??= {};
   for (const store of [state.comments, state.groupComments, state.docComments, state.elComments])
     for (const [k, v] of Object.entries(store)) {
@@ -1224,14 +1237,32 @@ function renderGroups() {
     };
     const calloutHtml = a => `<div class="callout ${esc(a.type || "explain")}">
       <span class="label">${ANN[a.type] || "Note"}</span><span>${esc(a.text || "")}</span></div>`;
-    const slotRow = key => {
-      const tr = wideRow("", "comment-slot");
+    /* A comment belongs to the side its line is on, so in split view the slot only spans that
+       side — the thread sits under the line it is about instead of straddling both columns */
+    const slotRow = (key, side) => {
+      const tr = document.createElement("tr");
+      tr.className = "comment-slot";
       tr.dataset.slot = key;
       tr.hidden = true;
+      tr.innerHTML = side === "left"
+        ? `<td class="wide" colspan="3"></td><td colspan="3"></td>`
+        : side === "right"
+          ? `<td colspan="3"></td><td class="wide gap" colspan="3"></td>`
+          : side === "both"
+            ? `<td class="wide" colspan="3"></td><td class="wide gap" colspan="3"></td>`
+            : `<td class="wide" colspan="${COLS}"></td>`;
       return tr;
     };
-    const cbtnHtml = key => `<button class="cbtn" title="Comment on this line"
-      data-act="new" data-kind="line" data-key="${esc(key)}">+</button>`;
+    /* A deletion exists only on the left and an addition only on the right. A context line sits on
+       both sides — same line, one thread — so its slot gets a cell on each side and the thread is
+       drawn on the side the + was pressed (see threadHost) */
+    const sideOf = i => {
+      if (!SPLIT) return null;
+      const t = parsed.rows[i]?.t;
+      return t === "del" ? "left" : t === "add" ? "right" : "both";
+    };
+    const cbtnHtml = (key, side) => `<button class="cbtn" title="Comment on this line"
+      data-act="new" data-kind="line" data-key="${esc(key)}"${side ? ` data-side="${side}"` : ""}>+</button>`;
 
     if (pendingExplain) {
       tbody.appendChild(wideRow(`<div class="callout explain prose-target">
@@ -1249,20 +1280,21 @@ function renderGroups() {
     const trailingRows = idxs => {
       for (const i of idxs)
         for (const a of anchors.get(i) || []) tbody.appendChild(wideRow(calloutHtml(a)));
-      for (const i of idxs) tbody.appendChild(slotRow(h.id + ":" + i));
+      for (const i of idxs) tbody.appendChild(slotRow(h.id + ":" + i, sideOf(i)));
     };
 
     if (SPLIT) {
       /* One side of a paired row: line number, sign + comment button, code */
       const sideCells = (cell, isRight) => {
         const gap = isRight ? " gap" : "";
-        if (!cell) return `<td class="ln s-empty${gap}"></td><td class="sign s-empty"></td><td class="code s-empty"></td>`;
+        const col = isRight ? " r" : " l";   // which of the two width variables this cell follows
+        if (!cell) return `<td class="ln s-empty${gap}"></td><td class="sign s-empty"></td><td class="code s-empty${col}"></td>`;
         const { row, idx } = cell;
         const cls = row.t === "add" || row.t === "del" ? "s-" + row.t : "s-ctx";
         const key = h.id + ":" + idx;
         return `<td class="ln ${cls}${gap}">${(isRight ? row.new : row.old) ?? ""}</td>
-          <td class="sign ${cls}" data-ckey="${esc(key)}">${row.t === "add" ? "+" : row.t === "del" ? "−" : ""}${cbtnHtml(key)}</td>
-          <td class="code ${cls}" data-ckey="${esc(key)}">${esc(row.text)}</td>`;
+          <td class="sign ${cls}" data-ckey="${esc(key)}">${row.t === "add" ? "+" : row.t === "del" ? "−" : ""}${cbtnHtml(key, isRight ? "right" : "left")}</td>
+          <td class="code ${cls}${col}" data-ckey="${esc(key)}">${esc(row.text)}</td>`;
       };
       for (const pair of pairRows(parsed.rows)) {
         const tr = document.createElement("tr");
@@ -1347,7 +1379,11 @@ function threadHost(key, kind) {
   if (kind === "doc") return document.querySelector(`[data-dcwrap="${CSS.escape(key)}"]`);
   if (kind === "el") return document.querySelector(`[data-elwrap="${CSS.escape(key)}"]`);
   const slot = document.querySelector(`tr[data-slot="${CSS.escape(key)}"]`);
-  return slot ? slot.firstElementChild : null;
+  if (!slot) return null;
+  const cells = slot.querySelectorAll("td.wide");
+  // A context line has a cell on both sides: draw the thread on the side it was written on (new → right)
+  if (cells.length > 1) return state.commentSides[key] === "left" ? cells[0] : cells[1];
+  return cells[0] || null;
 }
 
 function editorHtml(key, kind, idx, value, mode) {
@@ -1372,6 +1408,8 @@ function renderThread(key, kind, editAt = null) {
   const host = threadHost(key, kind);
   if (!host) return;
   const slot = host.closest("tr.comment-slot");   // threads inside the table toggle their whole row
+  // A context line's slot has a cell on each side; the side not in use must not keep a stale thread
+  if (slot) for (const td of slot.querySelectorAll("td.wide")) if (td !== host) td.innerHTML = "";
   const msgs = msgsOf(key, kind);
   const done = !!doneStore(kind)[key];
   const marked = msgs.length > 0 && !done;
@@ -1671,6 +1709,8 @@ document.addEventListener("click", e => {
   const kind = t.dataset.kind || "line";
   const idx = t.dataset.idx != null ? +t.dataset.idx : 0;
   const msgs = msgStore(kind), done = doneStore(kind);
+  // Split view: the side whose + was pressed is the side the thread belongs on
+  if (act === "new" && t.dataset.side) state.commentSides[key] = t.dataset.side;
   switch (act) {
     case "new":
     case "reply":
@@ -1727,6 +1767,46 @@ splitBox.addEventListener("change", e => {
   for (const [key, kind] of eachThread()) renderThread(key, kind);
   refreshCounters();
 });
+
+/* Drag the boundary between the two sides. Both columns read one variable on <body>, so every diff
+   table on the page moves together, and the position is remembered like the layout choice */
+const SPLIT_POS_KEY = "kaisetu:splitPos";
+const setSplitPos = pct => document.body.style.setProperty("--split", pct.toFixed(2) + "%");
+try {
+  const saved = parseFloat(localStorage.getItem(SPLIT_POS_KEY));
+  if (saved >= 20 && saved <= 80) setSplitPos(saved);
+} catch (e) {}
+/* The grab strip is the 10px over the boundary, so the line numbers stay clickable */
+const onBoundary = e => {
+  if (!SPLIT) return null;
+  const cell = e.target.closest?.("td.ln.gap");
+  if (!cell) return null;
+  return e.clientX <= cell.getBoundingClientRect().left + 5 ? cell : null;
+};
+document.addEventListener("mousedown", e => {
+  const cell = onBoundary(e);
+  if (!cell) return;
+  const table = cell.closest("table.diff").getBoundingClientRect();
+  e.preventDefault();
+  document.body.classList.add("resizing");
+  let pct = null;
+  const move = ev => setSplitPos(pct =
+    Math.min(78, Math.max(22, ((ev.clientX - table.left) / table.width) * 100)));
+  const up = () => {
+    document.body.classList.remove("resizing");
+    removeEventListener("mousemove", move);
+    removeEventListener("mouseup", up);
+    if (pct != null) try { localStorage.setItem(SPLIT_POS_KEY, String(pct)); } catch (err) {}
+  };
+  addEventListener("mousemove", move);
+  addEventListener("mouseup", up);
+});
+document.addEventListener("dblclick", e => {
+  if (!onBoundary(e)) return;
+  setSplitPos(50);
+  try { localStorage.setItem(SPLIT_POS_KEY, "50"); } catch (err) {}
+});
+
 document.getElementById("drawer-close").addEventListener("click", () => toggleDrawer(false));
 document.getElementById("finish-btn").addEventListener("click", finishReview);
 document.getElementById("update-apply").addEventListener("click", applyDataUpdate);
