@@ -22,15 +22,7 @@ kaisetu（解説）は、そこを埋める [Claude Code](https://code.claude.co
 kaisetu を作ったのは、このセルフレビューをやりやすくするためです。AIに書かせた自分のdiffを、
 他人のPRを読むときと同じ落ち着きで読みたい。ファイル順に diff を上から読むのは、もうやめました。
 
-```
-/kaisetu
-  → エージェントが差分を収集し、hunk を意図単位にグループ化して解説を書く
-  → ローカルサーバが起動し、ブラウザが開く
-  → 人間が読み、diff行 / グループの意図 / 概要 / AIの解説 にコメントする
-  → 「Finish review」→ コメントがエージェントのセッションに届く
-  → エージェントが修正または回答し、回答は画面のスレッドに表示される
-  → 返信して再送信 … 納得いくまで往復する
-```
+<img width="1715" height="855" alt="Terminal English-selection" src="https://github.com/user-attachments/assets/ee2cf175-e408-45e4-a57d-3f8d051ae851" />
 
 ## セルフレビューを楽にする3つの特徴
 
