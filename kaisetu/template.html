@@ -311,13 +311,14 @@ main { max-width: 1060px; margin: 0 auto; padding: 28px 24px 64px; }
 .overview ul { margin: 0; padding-left: 1.4em; }
 .overview li { margin: 2px 0; }
 .overview p { margin: 0 0 6px; }
-/* Right side of "technical change ＝ what happens as a result" (the plain-language outcome) */
-.overview .eq { color: var(--ink-faint); margin: 0 .4em; }
-.overview .eff { color: var(--ink-soft); }
-.overview .tagline .eff {
-  display: block; margin-top: 5px;
-  font-size: 14.5px; font-weight: 500; line-height: 1.7;
+/* Right side of "technical change ＝ what happens as a result": the plain-language outcome.
+   Always on its own line, led by an arrow, with wrapped lines hanging under the text */
+.overview .eff {
+  display: block; margin-top: 3px; color: var(--ink-soft);
+  font-size: 13.5px; line-height: 1.75;
+  padding-left: 1.3em; text-indent: -1.3em;
 }
+.overview .eff .mark { color: var(--blue); font-weight: 700; margin-right: .4em; }
 
 /* ---------- group index ---------- */
 .group-index { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
@@ -995,20 +996,20 @@ const planHtml = DATA.plan
   : "none";
 document.getElementById("meta").innerHTML =
   `<b>Scope:</b> ${esc(DATA.base || "-")} &nbsp;&nbsp;<b>plan:</b> ${planHtml} &nbsp;&nbsp;<b>Generated:</b> ${esc(DATA.generatedAt || "-")}`;
-/* Split "technical change ＝ what happens as a result" on the full-width ＝ and style the right side
-   (the plain-language outcome). Only the full-width ＝ counts, so `=` inside code is never caught */
-function splitEffect(text, block = false) {
+/* Split "technical change ＝ what happens as a result" on the full-width ＝ and put the right side
+   (the plain-language outcome) on its own line, led by an arrow — the arrow reads as "and so",
+   which is what the right side actually says.
+   Only the full-width ＝ counts, so `=` inside code is never caught */
+function splitEffect(text) {
   const i = text.indexOf("＝");
   if (i < 0) return esc(text);
   const tech = esc(text.slice(0, i).trim());
   const eff = esc(text.slice(i + 1).trim());
-  return block
-    ? `${tech}<span class="eff">＝ ${eff}</span>`
-    : `${tech}<span class="eq">＝</span><span class="eff">${eff}</span>`;
+  return `${tech}<span class="eff"><span class="mark">→</span>${eff}</span>`;
 }
 if (DATA.tagline || DATA.overview) {
   // Show the tagline large at the top; overview lines starting with "- " become a <ul>, other lines <p>
-  let html = DATA.tagline ? `<p class="tagline">${splitEffect(DATA.tagline, true)}</p>` : "";
+  let html = DATA.tagline ? `<p class="tagline">${splitEffect(DATA.tagline)}</p>` : "";
   let inList = false;
   for (const ln of String(DATA.overview || "").split("\n")) {
     const m = ln.match(/^\s*[-・]\s*(.+)/);
