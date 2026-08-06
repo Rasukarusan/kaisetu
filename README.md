@@ -26,15 +26,8 @@ into the agent session.
 I built kaisetu to make this self-review easier. I wanted to read my own AI-written diffs with
 the same calm I bring to a teammate's PR. I've stopped reading diffs top to bottom in file order.
 
-```
-/kaisetu
-  → the agent collects the diff, groups hunks by intent, writes explanations
-  → a local server starts and your browser opens
-  → you read, and comment on diff lines / group intents / the overview / the AI's explanations
-  → "Finish review" → the comments land back in the agent session
-  → the agent fixes code or answers; answers appear in the page as threads
-  → reply, resubmit, repeat — until you're done
-```
+<img width="1715" height="855" alt="Terminal English-selection" src="https://github.com/user-attachments/assets/ee2cf175-e408-45e4-a57d-3f8d051ae851" />
+
 
 ## Three features that make self-review easier
 
