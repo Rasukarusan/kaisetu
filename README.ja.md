@@ -2,6 +2,8 @@
 
 [English](README.md) | 日本語
 
+https://github.com/user-attachments/assets/b3cb8d23-e147-4e56-a422-4d1b43f8576a
+
 **AIが生成した差分のためのレビューUI — 整理と解説はAI、判断は人間。**
 
 kaisetu（解説）は [Claude Code](https://code.claude.com) / Codex 用のエージェントスキルです。
