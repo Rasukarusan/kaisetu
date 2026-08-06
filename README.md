@@ -26,8 +26,7 @@ into the agent session.
 I built kaisetu to make this self-review easier. I wanted to read my own AI-written diffs with
 the same calm I bring to a teammate's PR. I've stopped reading diffs top to bottom in file order.
 
-<img width="1715" height="855" alt="Terminal English-selection" src="https://github.com/user-attachments/assets/ee2cf175-e408-45e4-a57d-3f8d051ae851" />
-
+<img width="715" alt="Terminal English-selection" src="https://github.com/user-attachments/assets/ee2cf175-e408-45e4-a57d-3f8d051ae851" />
 
 ## Three features that make self-review easier
 
