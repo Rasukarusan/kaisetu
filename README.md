@@ -34,24 +34,6 @@ the same calm I bring to a teammate's PR. I've stopped reading diffs top to bott
 - Squinting at a hunk thinking "so what is this trying to do?" → **there's a one-line explanation**
 - Piling up "I'll ask about this later" notes → **ask the AI right there**
 
-## Quick start (demo)
-
-No agent needed — try the UI with the bundled sample data:
-
-```bash
-git clone https://github.com/Rasukarusan/kaisetu.git
-cd kaisetu
-python3 kaisetu/scripts/serve.py kaisetu/example/sample-kidoku.json      # a real 23-file commit
-python3 kaisetu/scripts/serve.py kaisetu/example/sample-kidoku.ja.json   # the same review, in Japanese
-python3 kaisetu/scripts/serve.py kaisetu/example/sample-data.json        # diff review, minimal
-python3 kaisetu/scripts/serve.py kaisetu/example/sample-page-data.json   # HTML review
-```
-
-Your browser opens the review page. Press `?` for keyboard shortcuts.
-
-`sample-kidoku.json` is a real review of [kidoku](https://github.com/Rasukarusan/kidoku) commit
-`f0a8898` — 23 files, 30 hunks, grouped into 6 intents. Since review text is written in whatever
-language you are talking to the agent in, the `.ja.json` file is the same commit reviewed in Japanese.
 
 ## Install as a skill
 
