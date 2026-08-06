@@ -1,11 +1,11 @@
 ---
 name: kaisetu
-description: Group a large diff by intent and launch a local review UI, sorted by risk with AI explanations. The human makes the review judgments; comments made on screen come back to the session via "Finish review". Use explicitly for large diffs or self-review after implementing a plan.
+description: Group a large diff by intent and launch a local review UI, sorted by importance with AI explanations. The human makes the review judgments; comments made on screen come back to the session via "Finish review". Use explicitly for large diffs or self-review after implementing a plan.
 ---
 
 # kaisetu
 
-A skill that launches a review UI showing a diff as "groups by intent × sorted by risk × with AI explanations".
+A skill that launches a review UI showing a diff as "groups by intent × sorted by importance × with AI explanations".
 **Reviewing (judging good/bad) is the human's job. The AI only organizes the diff for reading and adds explanations.**
 Comments the human leaves on screen come back to you to act on.
 
@@ -16,7 +16,9 @@ The directory containing this SKILL.md is referred to as `$SKILL_DIR` below.
 Always read `$SKILL_DIR/schema.md` for the data format.
 
 **Language:** write all review content (title, tagline, overview, intents, explanations, annotations)
-in the language the user is conversing in.
+in the language the user is conversing in. The page's own labels follow the same language
+(e.g. a Japanese review shows 解説 / メモ / 疑問 instead of AI note / Note / Question) — it is detected
+from the text, so set `lang` in review-data.json only when the detection would get it wrong.
 
 There are two modes, decided by what is being reviewed:
 
@@ -53,20 +55,24 @@ If a plan exists (`plans/*.md` etc.), read it first so you can explain the inten
 
 Organize in 3 levels: **group (unit of intent) > section (unit of explanation per feature) > hunk**.
 
-- First write the `tagline`: a one-liner for the whole change. **It may be slightly imprecise — favor a
-  rough description that conveys the whole thing at a glance.** Shown large at the top of the overview.
+- First write the `tagline`: **one sentence that anyone can read**, shown large at the top.
+  No function or file names, no jargon, no `＝` — say what the change means for the product, its users,
+  or operations. **It may be slightly imprecise — favor a rough description that conveys the whole
+  thing at a glance.**
+  Example: `Links to the app and the admin tools are built in one place, so they stop breaking`
 - Then write the `overview`: 3–5 bullet points (lines starting with `- `, newline-separated) describing
   what this branch/diff does overall. Base it on the plan, PR description, and branch name; write it as
   the introduction a first-time reader sees at the very top of the review page.
-- **Write the tagline and each overview line as "explanation an engineer understands ＝ outcome a
-  non-engineer understands"** (＝ is the full-width equals sign U+FF1D).
+- **Write each overview line as "explanation an engineer understands ＝ outcome a non-engineer
+  understands"** (＝ is the full-width equals sign U+FF1D).
   The right side states *what happens as a result* in words that make sense to someone who doesn't read
-  code (no function or file names).
+  code (no function or file names), and is rendered on its own line led by an arrow.
   Example: `Consolidate URL building and host checks into resolveAppUrl ＝ URLs are built in one place, so missed updates can no longer cause broken links`
   See "Writing the overview" in schema.md for details.
 - Group hunks by **intent** (e.g. rename + related import fixes = 1 group). Not by file.
 - Give each group an `intent` (what the change is for) and, if useful, an `impact` (blast radius).
-- Give each group a `risk`. This is a reading-order guide for how carefully a human should read:
+- Give each group an `importance`. This is a reading-order guide for how carefully a human should read
+  it — not a verdict on the code:
   - `high`: shared/foundation code where behavior may change; data, auth, or billing
   - `medium`: wide-reaching mechanical changes; UI that contains logic changes
   - `low`: docs, tests only, trivial renames
@@ -86,7 +92,7 @@ Organize in 3 levels: **group (unit of intent) > section (unit of explanation pe
 ## 3–4. Generate and launch the UI
 
 1. Write `$REVIEW_DIR/review-data.json` following schema.md.
-   Order groups by risk (high → medium → low). Set `repoRoot` to the target repo's absolute path.
+   Order groups by importance (high → medium → low). Set `repoRoot` to the target repo's absolute path.
    Also write `$REVIEW_DIR/meta.json` for the list view (`/kaisetu-list` reads it instead of opening
    the full diff; it contains only title / tagline / repoRoot / generatedAt — see schema.md).
 2. Start the server as a long-running process (the browser opens automatically).

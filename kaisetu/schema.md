@@ -8,10 +8,14 @@ language the user is conversing in.
 ```jsonc
 {
   "title": "Review of unstaged app/system URL cleanup",     // page title
-  // Write tagline / overview as "technical explanation ＝ what happens as a result" (full-width ＝).
-  // The right side of ＝ gets its own style on screen. See "Writing the overview" below.
-  "tagline": "Consolidate URL building into one place ＝ prepares the migration so links never break",
+  // The tagline is one plain sentence anyone can read — no ＝, no code vocabulary.
+  "tagline": "Links to the app and the admin tools are built in one place, so they stop breaking",
+  // Each overview line is "technical explanation ＝ what happens as a result" (full-width ＝).
+  // The right side of ＝ gets its own line on screen. See "Writing the overview" below.
   "overview": "- Consolidate URL building and host checks into resolveAppUrl ＝ URLs are built in one place so missed updates no longer break links\n- …",
+  "lang": "ja",                                         // optional: language of the review text. The page's own
+                                                        // labels (解説 / メモ / 疑問 …) follow it. Detected from
+                                                        // the prose when omitted, so it is rarely needed
   "generatedAt": "2026-07-25 09:30",                    // generation time (write it yourself; don't compute in JS)
   "base": "main..HEAD + unstaged",                      // human description of the diff scope
   "plan": "plans/url-cleanup.md",                       // plan file consulted (path relative to repo root), or null. Rendered as a link served at /plan
@@ -23,7 +27,7 @@ language the user is conversing in.
       "title": "Shared URL / host-check foundation",
       "intent": "Consolidate per-deployment-mode URL building and host checks into one place…", // why this change exists (1–3 sentences)
       "impact": "Foundation code also used on the legacy path, so the blast radius is wide.",   // blast-radius note (optional)
-      "risk": "high",                   // "high" | "medium" | "low"
+      "importance": "high",             // "high" | "medium" | "low" — how carefully this needs reading
       "tags": ["refactor"],             // feat / fix / refactor / test / docs / chore etc.
       "sections": [
         // Coherent per-feature units. Explanations are written at this level.
@@ -58,6 +62,18 @@ language the user is conversing in.
 
 ## Writing the overview (tagline / overview)
 
+### tagline — one sentence anyone can read
+
+It sits large at the top of the review, so it has to land for someone who does not read code.
+No function or file names, no jargon, and **no `＝`** — say what the change means for the product,
+its users, or operations, in one sentence.
+
+```
+Links to the app and the admin tools are built in one place, so they stop breaking
+```
+
+### overview — one line per point, both readers at once
+
 **Each line carries both "an explanation an engineer understands" and "an outcome a non-engineer
 understands", joined by the full-width equals sign `＝` (U+FF1D).**
 
@@ -68,8 +84,8 @@ Consolidate scattered URL building and host checks into resolveAppUrl ＝ URLs a
 - Left of `＝`: the usual technical explanation (function/module names are fine)
 - Right of `＝`: **what happens as a result**, in words for someone who doesn't read code.
   Describe what changes for the feature, its users, or operations. No jargon, file names, or function names.
-- The tagline renders its right side as a second line; each overview line renders its right side as a
-  styled continuation.
+- On screen the right side goes on its own line, led by an arrow (`→`) — write the data with `＝`,
+  the page renders the outcome as "and so this happens".
 - The half-width `=` does NOT split (so `=` inside code is never caught). A line with no meaningful
   outcome can omit `＝`.
 
@@ -99,7 +115,7 @@ as a fallback anchor for when the page changes. `key: "page"` is a comment on th
 
 ## Granularity guide
 
-- **group** = the intent of a change (the unit of risk assessment)
+- **group** = the intent of a change (the unit importance is judged on)
 - **section** = a coherent per-feature unit (the unit of explanation). Size it so "reading this section
   gives you the whole change for that feature"
 - **annotation** = a line-level note. Not every hunk needs one
@@ -213,8 +229,8 @@ Written when "Finish review" is pressed. Each comment is a thread of alternating
 
 ## Rendering rules (template behavior)
 
-- Groups are displayed in `risk` order (high → medium → low). Order them by risk in the JSON as well
-  (within the same risk, JSON order is preserved).
+- Groups are displayed in `importance` order (high → medium → low). Order them that way in the JSON as
+  well (within the same level, JSON order is preserved).
 - Hunks render side by side by default (old left, new right); deletions line up with the additions that
   replaced them. The header's "Split" toggle switches to the unified view and is remembered per browser.
   Comments are keyed by hunk ID and row index in both layouts, so switching never moves them.
