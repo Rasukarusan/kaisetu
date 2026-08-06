@@ -8,6 +8,8 @@ https://github.com/user-attachments/assets/d9aa9e8a-78bb-4940-b91a-99abae4b015e
 
 **A review UI that reshapes AI-generated diffs into something a human can actually read.**
 
+**[Try the demo in your browser](https://rasukarusan.github.io/kaisetu/sample-kidoku.html)** — a real 23-file review, no install.
+
 A confession first: I wasn't really reading my AI's diffs. Open a 23-file diff and you quietly
 close the tab. Scroll past the green and red, call it "reviewed", approve with a "probably fine".
 And before the review is even done, the AI has the next diff ready.

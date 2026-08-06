@@ -6,6 +6,8 @@ https://github.com/user-attachments/assets/b3cb8d23-e147-4e56-a422-4d1b43f8576a
 
 **AIが生成した差分を、人間が読める形に組み替えるレビューUI。**
 
+**[ブラウザでデモを試す](https://rasukarusan.github.io/kaisetu/sample-kidoku.ja.html)**（インストール不要・実在コミット23ファイルのレビュー）
+
 先に白状すると、私はAIのdiffを正直ぜんぶ読んでいませんでした。23ファイルのdiffを開いた瞬間、
 そっとタブを閉じたくなる。緑と赤をスクロールで眺めて「見た」ことにして、「たぶん大丈夫」で
 approve する。しかもレビューが終わらないうちに、AIは次のdiffを出してくる。
