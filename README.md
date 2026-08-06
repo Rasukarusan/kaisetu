@@ -2,6 +2,12 @@
 
 English | [日本語](README.ja.md)
 
+
+
+https://github.com/user-attachments/assets/d9aa9e8a-78bb-4940-b91a-99abae4b015e
+
+
+
 **A review UI for AI-generated diffs — the AI organizes and explains, the human judges.**
 
 *kaisetu* (解説, Japanese for "commentary") is an agent skill for [Claude Code](https://code.claude.com) and Codex.
