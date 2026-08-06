@@ -22,7 +22,7 @@ kaisetu（解説）は、そこを埋める [Claude Code](https://code.claude.co
 kaisetu を作ったのは、このセルフレビューをやりやすくするためです。AIに書かせた自分のdiffを、
 他人のPRを読むときと同じ落ち着きで読みたい。ファイル順に diff を上から読むのは、もうやめました。
 
-<img width="1715" height="855" alt="Terminal English-selection" src="https://github.com/user-attachments/assets/ee2cf175-e408-45e4-a57d-3f8d051ae851" />
+<img width="715" alt="Terminal English-selection" src="https://github.com/user-attachments/assets/ee2cf175-e408-45e4-a57d-3f8d051ae851" />
 
 ## セルフレビューを楽にする3つの特徴
 
