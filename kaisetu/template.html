@@ -638,15 +638,33 @@ td.wide { padding: 6px 14px 6px 4.8em; }
   border-color: color-mix(in srgb, var(--tip-ink) 50%, transparent);
 }
 
-/* ---------- HTML review mode (comment on the rendered page itself) ---------- */
-body.mode-html .diff-only, body:not(.mode-html) .html-only { display: none; }
-body.mode-html main { display: none; }
-.htmlview { display: flex; align-items: stretch; height: calc(100vh - var(--topbar-h, 53px)); }
-.preview { position: relative; flex: 1; min-width: 0; background: var(--surface-3); }
+/* ---------- Document review mode (comment on the rendered document itself) ---------- */
+body.mode-doc .diff-only, body:not(.mode-doc) .doc-only { display: none; }
+body.mode-doc main { display: none; }
+.docview { display: flex; align-items: stretch; height: calc(100vh - var(--topbar-h, 53px)); }
+.preview { display: flex; flex-direction: column; flex: 1; min-width: 0; background: var(--surface-3); }
+/* Whole-document comments live here: only rows carry a +, and the wrappers around them are
+   deliberately not rows (see collectRows in the script) */
+.doc-toolbar {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  padding: 7px 12px; border-bottom: 1px solid var(--border); background: var(--card);
+}
+.frame-wrap { position: relative; flex: 1; min-height: 0; }
 .preview iframe { display: block; width: 100%; height: 100%; border: 0; background: #fff; }
-.preview.picking iframe { cursor: crosshair; }
-/* Overlay above the iframe: hover outline and numbered pins. The reviewed page's DOM is never touched */
+/* Overlay above the iframe: the + button, the outline it previews, and numbered pins.
+   The reviewed document's DOM is never touched */
 .pins { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+/* The one way into a comment: a + in the gutter of the row under the cursor, exactly like the +
+   on a diff line. The document itself never responds to the pointer, so nothing flickers. */
+.addbtn {
+  position: absolute; pointer-events: auto;
+  width: 21px; height: 21px; padding: 0; border-radius: 6px;
+  border: 1px solid var(--blue); background: var(--blue); color: #fff;
+  font-size: 15px; line-height: 1; cursor: pointer;
+  box-shadow: 0 1px 5px rgba(20, 24, 33, .35);
+}
+.addbtn:hover { background: var(--blue-hover); }
+.addbtn[hidden] { display: none; }
 .hl {
   position: absolute; display: none;
   border: 2px solid var(--blue); background: rgba(47, 107, 176, .08); border-radius: 3px;
@@ -761,8 +779,8 @@ body.mode-html main { display: none; }
   .overlay { padding: 14px; }
   .modal { padding: 20px 18px; }
   .drawer { width: 100vw; max-width: 100vw; }
-  /* HTML review mode: page on top, comments below, instead of side by side */
-  .htmlview { flex-direction: column; }
+  /* Document review mode: the document on top, comments below, instead of side by side */
+  .docview { flex-direction: column; }
   .preview { min-height: 0; }
   .threadcol {
     flex: none; width: 100%; max-width: none; height: 45%;
@@ -774,11 +792,24 @@ body.mode-html main { display: none; }
 }
 </style>
 <script>
-/* Apply the saved theme before first paint to avoid a flash */
-try {
-  const t = localStorage.getItem("kaisetu:theme");
-  if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
-} catch (e) {}
+/* How the reader likes the page: theme and diff layout. The server keeps these in
+   ~/.kaisetu/prefs.json and embeds them here, so a setting made in one review is already in place
+   when the next one opens — every review is served on its own port, and localStorage is scoped to
+   the origin, so a browser-side store alone would forget them. It is still written as the fallback
+   for the static build (serve.py --build), which has no server to ask. */
+const PREFS = (() => {
+  const served = __REVIEW_PREFS__;
+  if (served && Object.keys(served).length) return served;
+  try { return JSON.parse(localStorage.getItem("kaisetu:prefs") || "{}"); } catch (e) { return {}; }
+})();
+/* Applied before first paint, so the page never flashes the wrong theme */
+if (PREFS.theme === "light" || PREFS.theme === "dark") document.documentElement.dataset.theme = PREFS.theme;
+function savePrefs(update) {
+  Object.assign(PREFS, update);
+  try { localStorage.setItem("kaisetu:prefs", JSON.stringify(PREFS)); } catch (e) {}
+  if (location.protocol.startsWith("http"))
+    fetch("/api/prefs", { method: "POST", body: JSON.stringify(update) }).catch(() => {});
+}
 </script>
 </head>
 <body class="hide-tests">
@@ -790,7 +821,7 @@ try {
   <span class="spacer"></span>
   <label class="opt diff-only" title="Show the diff side by side (old left, new right)"><input type="checkbox" id="split-mode" checked> Split</label>
   <label class="opt diff-only" title="Hide hunks in test files"><input type="checkbox" id="hide-tests" checked> Hide tests</label>
-  <label class="opt html-only" title="Click an element in the page to comment on it (turn off to use the page normally)"><input type="checkbox" id="pick-mode" checked> Comment mode</label>
+  <label class="opt doc-only" title="Show a + next to the row under the cursor (turn off to use the document normally)"><input type="checkbox" id="pick-mode" checked> Comment mode</label>
   <button class="comment-count" id="comment-count" title="Open the comment list"></button>
   <button class="abtn" id="copy-btn">Copy summary</button>
   <button class="abtn finish" id="finish-btn" hidden title="Send the results back to the agent session">Finish review</button>
@@ -819,19 +850,25 @@ try {
   <div id="detail"></div>
 </main>
 
-<!-- HTML review mode: the reviewed page on the left, its comment threads on the right -->
-<div class="htmlview html-only" id="htmlview">
+<!-- Document review mode: the reviewed document on the left, its comment threads on the right -->
+<div class="docview doc-only" id="docview">
   <div class="preview" id="preview">
-    <iframe id="target-frame" title="Reviewed page"></iframe>
-    <div class="pins" id="pins">
-      <div class="hl" id="hl"><span class="tag"></span></div>
+    <div class="doc-toolbar">
+      <button class="mini-btn" id="page-comment-btn"
+        title="Comment on the document as a whole, rather than on one element">+ Comment on the whole document</button>
     </div>
-    <div class="pick-hint" id="pick-hint">Click any part of the page to comment on it</div>
+    <div class="frame-wrap">
+      <iframe id="target-frame" title="Reviewed document"></iframe>
+      <div class="pins" id="pins">
+        <div class="hl" id="hl"><span class="tag"></span></div>
+        <button class="addbtn" id="addbtn" hidden title="Comment on this">+</button>
+      </div>
+      <div class="pick-hint" id="pick-hint">Hover a paragraph and press the + to comment on it</div>
+    </div>
   </div>
   <aside class="threadcol" id="threadcol">
     <div class="tc-head">
       <span class="ttl">Comments</span>
-      <button class="mini-btn" id="page-comment-btn" title="Comment on the page as a whole">On the whole page</button>
     </div>
     <div class="tc-list" id="tc-list"></div>
   </aside>
@@ -846,17 +883,17 @@ try {
       <tr class="diff-only"><td class="key">copy</td><td>The button next to a file name copies its path</td></tr>
       <tr class="diff-only"><td class="key">j / k</td><td>Jump to the next / previous group</td></tr>
       <tr class="diff-only"><td class="key">Split</td><td>Side-by-side (old left, new right) or unified — drag the boundary between the sides to resize it, double-click to reset. The choice is remembered</td></tr>
-      <tr class="html-only"><td class="key">click</td><td>Click any element in the page to comment on it</td></tr>
-      <tr class="html-only"><td class="key">pin</td><td>A numbered pin marks each commented element; click a pin or a comment to jump between them</td></tr>
-      <tr class="html-only"><td class="key">p</td><td>Toggle comment mode (turn it off to click links and buttons in the page)</td></tr>
-      <tr class="html-only"><td class="key">Comments</td><td>The counter in the header shows / hides the comment column</td></tr>
+      <tr class="doc-only"><td class="key">+</td><td>Hover a paragraph, a heading, a list item or a table row — press the + in its gutter to comment</td></tr>
+      <tr class="doc-only"><td class="key">pin</td><td>Once commented on, a row keeps a numbered pin in place of the +; click a pin or a comment to jump between them</td></tr>
+      <tr class="doc-only"><td class="key">p</td><td>Toggle comment mode (turn it off to click links and buttons in the document)</td></tr>
+      <tr class="doc-only"><td class="key">Comments</td><td>The counter in the header shows / hides the comment column</td></tr>
       <tr><td class="key">c</td><td>Copy summary</td></tr>
       <tr><td class="key">⌘Enter</td><td>Save while editing a comment</td></tr>
       <tr><td class="key">Esc</td><td>Cancel comment editing / close the comment list</td></tr>
     </table>
-    <p class="html-only" style="font-size:13px;color:var(--ink-soft)">Comments are anchored to the element
-    you clicked. When the AI fixes the HTML, this page reloads with the new render within seconds and your
-    comments stay put (an element that no longer exists is marked "anchor lost").</p>
+    <p class="doc-only" style="font-size:13px;color:var(--ink-soft)">Comments are anchored to the row
+    you pressed the + on. When the AI fixes the file, this page reloads with the new render within
+    seconds and your comments stay put (a row that no longer exists is marked "anchor lost").</p>
     <p style="font-size:13px;color:var(--ink-soft)">Comments are saved automatically.
     "Finish review" sends the results back to the agent session; the page stays usable after sending.
     When a comment receives an AI answer, use "Reply" to continue the thread, then press
@@ -889,10 +926,12 @@ try {
 const DATA = JSON.parse(document.getElementById("review-data").textContent);
 const SERVER = location.protocol === "http:" || location.protocol === "https:";
 const VERSION = "__REVIEW_VERSION__"; // review-data.json version (used to detect rewrites)
-/* HTML review mode: review a rendered HTML page instead of a diff.
-   No grouping and no explanations — the page is shown in an iframe and commented on element by element. */
-const HTML_MODE = !!(DATA.html || DATA.htmlInline);
-if (HTML_MODE) document.body.classList.add("mode-html");
+/* Document review mode: review a rendered document (HTML or Markdown) instead of a diff.
+   No grouping and no explanations — it is shown in an iframe and commented on element by element.
+   Markdown is rendered to HTML by the server, so from here on both kinds are just a DOM to click. */
+const DOC_MODE = !!(DATA.doc || DATA.docInline);
+const DOC_MARKDOWN = DATA.docKind === "markdown";
+if (DOC_MODE) document.body.classList.add("mode-doc");
 
 /* ---------- language ---------- */
 /* The review itself is written in whatever language the user talks to the agent in, so the labels
@@ -919,7 +958,7 @@ const JA = {
   "Awaiting AI reply — press “Finish review” to send": "AIの回答待ち — 「レビューを終える」で送信",
   "Copy path": "パスをコピー", "copy": "コピー", "none": "なし",
   "Scope": "対象", "plan": "計画", "Generated": "生成",
-  "anchor lost": "参照先なし",
+  "anchor lost": "参照先なし", "the whole document": "ドキュメント全体",
   "Copied: ": "コピーしました: ",
   "Results sent back to the session. The page stays usable":
     "結果をセッションに送りました。このページはそのまま使えます",
@@ -934,12 +973,7 @@ const L = s => (LANG === "ja" && JA[s]) || s;
 /* "N hunks" in English, "N hunk" in Japanese: the count leads either way, only the noun differs */
 const nOf = (count, en, ja) => LANG === "ja" ? `${count} ${ja}` : `${count} ${en}`;
 /* Diff layout: side by side (default on wide screens) or unified. Remembered like the theme */
-const SPLIT_KEY = "kaisetu:split";
-let SPLIT = matchMedia("(min-width: 768px)").matches;
-try {
-  const savedSplit = localStorage.getItem(SPLIT_KEY);
-  if (savedSplit != null) SPLIT = savedSplit !== "0";
-} catch (e) {}
+let SPLIT = typeof PREFS.split === "boolean" ? PREFS.split : matchMedia("(min-width: 768px)").matches;
 document.body.classList.toggle("split", SPLIT);
 
 /* ---------- state (localStorage + server autosave) ---------- */
@@ -950,9 +984,9 @@ function fingerprint(s) {
 }
 // The localStorage key is derived from the diff structure (hunk IDs and bodies).
 // Rewriting explanations does not move comment anchors, so the key stays stable too.
-// In HTML mode it is derived from the reviewed page's path, so its comments survive the page being fixed.
-const LS_KEY = "kaisetu:" + fingerprint(HTML_MODE
-  ? "html:" + (DATA.html || DATA.title || "")
+// In document mode it comes from the reviewed file's path, so comments survive the file being fixed.
+const LS_KEY = "kaisetu:" + fingerprint(DOC_MODE
+  ? "doc:" + (DATA.doc || DATA.title || "")
   : JSON.stringify((DATA.groups || []).map(
       g => [g.id, (g.sections || (g.hunks ? [{ hunks: g.hunks }] : []))
         .map(s => (s.hunks || []).map(h => [h.id, h.diff]))])));
@@ -962,7 +996,7 @@ const LS_KEY = "kaisetu:" + fingerprint(HTML_MODE
 let state = {
   comments: {}, groupComments: {}, docComments: {}, elComments: {},
   resolved: {}, groupResolved: {}, docResolved: {}, elResolved: {},
-  elAnchors: {},   // HTML mode: key → {sel, tag, text, label} (how to find the element again)
+  elAnchors: {},   // document mode: key → {sel, tag, text, label} (how to find the element again)
   commentSides: {},   // split view: key → "left" | "right" for a context line, commented on either side
 };
 let replies = { comments: {}, groupComments: {}, docComments: {}, elComments: {} }; // AI answers (polled from /api/replies)
@@ -1093,9 +1127,9 @@ const statsEl = document.getElementById("stats");
 if (st) {
   statsEl.innerHTML =
     `${nOf(st.files ?? "?", "files", "ファイル")} / ${nOf(st.hunks ?? "?", "hunks", "hunk")} <ins>+${st.additions ?? "?"}</ins> <del>−${st.deletions ?? "?"}</del>`;
-} else if (HTML_MODE) {
-  statsEl.textContent = DATA.html || "HTML";   // which page is under review
-  statsEl.title = DATA.html || "";
+} else if (DOC_MODE) {
+  statsEl.textContent = DATA.doc || "document";   // which file is under review
+  statsEl.title = DATA.doc || "";
 } else {
   statsEl.hidden = true;
 }
@@ -1159,7 +1193,7 @@ const SS_SCROLL = "kaisetu:scroll", SS_UPDATED = "kaisetu:updated", SS_FRAME = "
 function applyDataUpdate() {
   sessionStorage.setItem(SS_SCROLL, String(window.scrollY));
   sessionStorage.setItem(SS_UPDATED, "1");
-  // HTML mode: the reviewed page reloads too, so keep the reader where they were
+  // document mode: the reviewed document reloads too, so keep the reader where they were
   try {
     const win = document.getElementById("target-frame").contentWindow;
     if (win) sessionStorage.setItem(SS_FRAME, String(win.scrollY));
@@ -1454,7 +1488,7 @@ function commentMeta(key) {
 }
 
 /* kind = "line" (diff line) | "group" (whole group) | "doc" (rewrite request on AI-written prose)
-   | "el" (HTML mode: an element in the reviewed page).
+   | "el" (document mode: an element in the reviewed document).
    key is a line key / group ID / doc target ("overview" | "section:s1") / element selector ("page" = whole page) */
 const STORES = {
   line:  () => [state.comments, state.resolved, replies.comments],
@@ -1518,7 +1552,7 @@ function renderThread(key, kind, editAt = null) {
     document.querySelector(`.pbtn[data-kind="${kind}"][data-key="${CSS.escape(key)}"]`)
       ?.classList.toggle("has", marked);
   // Resolved threads are hidden on the diff (accessible only from the comment drawer).
-  // In HTML mode they stay in the comment column, greyed out, so the pin numbers keep matching.
+  // In document mode they stay in the comment column, greyed out, so the pin numbers keep matching.
   if (editAt == null && (!msgs.length || (done && kind !== "el"))) {
     host.innerHTML = "";
     if (slot) slot.hidden = true;
@@ -1565,10 +1599,10 @@ function renderThread(key, kind, editAt = null) {
 }
 
 /* ---------- counters / drawer ---------- */
-/* Enumerate commented threads as [key, kind] (docs → groups → lines; HTML mode: elements in page order) */
+/* Enumerate commented threads as [key, kind] (docs → groups → lines; document mode: elements in document order) */
 function eachThread() {
   const out = [];
-  if (HTML_MODE) {
+  if (DOC_MODE) {
     for (const key of elKeysInOrder()) if (msgsOf(key, "el").length) out.push([key, "el"]);
     return out;
   }
@@ -1628,15 +1662,15 @@ function toggleDrawer(open) {
 
 /* One comment surface per mode: the drawer over a diff, the thread column over an HTML page */
 function toggleComments(open) {
-  if (HTML_MODE) toggleThreadCol(open); else toggleDrawer(open);
+  if (DOC_MODE) toggleThreadCol(open); else toggleDrawer(open);
 }
 
 /* ---------- summary markdown ---------- */
 function buildMarkdown() {
   const lines = [];
   lines.push(`# kaisetu review: ${DATA.title || ""}`);
-  lines.push(HTML_MODE
-    ? `- Reviewed page: ${DATA.html || "-"} / generated: ${DATA.generatedAt || "-"}`
+  lines.push(DOC_MODE
+    ? `- Reviewed document: ${DATA.doc || "-"} / generated: ${DATA.generatedAt || "-"}`
     : `- Scope: ${DATA.base || "-"} / plan: ${DATA.plan || "none"} / generated: ${DATA.generatedAt || "-"}`);
   lines.push("");
   if (DATA.tagline || DATA.overview) {
@@ -1715,8 +1749,8 @@ async function finishReview() {
   const payload = {
     title: DATA.title,
     finished: true,
-    html: DATA.html || null,
-    // HTML mode: comments on elements of the reviewed page (selector + the text that was there)
+    doc: DATA.doc || null,
+    // Document mode: comments on elements of the reviewed document (selector + the text that was there)
     elementComments: eachThread().filter(([, kind]) => kind === "el")
       .map(([key]) => {
         const a = state.elAnchors[key] || {};
@@ -1753,7 +1787,7 @@ async function finishReview() {
 }
 
 /* ---------- theme ---------- */
-const THEME_KEY = "kaisetu:theme";
+/* The choice is stored in PREFS (see the head script) and so carries over to the next review */
 const themeBtn = document.getElementById("theme-btn");
 const darkMedia = matchMedia("(prefers-color-scheme: dark)");
 function effectiveTheme() {
@@ -1765,10 +1799,11 @@ function refreshThemeBtn() { themeBtn.innerHTML = effectiveTheme() === "dark" ? 
 themeBtn.addEventListener("click", () => {
   const next = effectiveTheme() === "dark" ? "light" : "dark";
   document.documentElement.dataset.theme = next;
-  try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
+  savePrefs({ theme: next });
   refreshThemeBtn();
+  syncFrameTheme();
 });
-darkMedia.addEventListener("change", refreshThemeBtn);
+darkMedia.addEventListener("change", () => { refreshThemeBtn(); syncFrameTheme(); });
 refreshThemeBtn();
 
 /* The topbar wraps on narrow screens, so everything that sticks below it reads its real height */
@@ -1867,7 +1902,7 @@ const splitBox = document.getElementById("split-mode");
 splitBox.checked = SPLIT;
 splitBox.addEventListener("change", e => {
   SPLIT = e.target.checked;
-  try { localStorage.setItem(SPLIT_KEY, SPLIT ? "1" : "0"); } catch (err) {}
+  savePrefs({ split: SPLIT });
   document.body.classList.toggle("split", SPLIT);
   // The diff is rebuilt in the other layout; comment keys are layout-independent, so threads come back
   renderGroups();
@@ -1877,12 +1912,8 @@ splitBox.addEventListener("change", e => {
 
 /* Drag the boundary between the two sides. Both columns read one variable on <body>, so every diff
    table on the page moves together, and the position is remembered like the layout choice */
-const SPLIT_POS_KEY = "kaisetu:splitPos";
 const setSplitPos = pct => document.body.style.setProperty("--split", pct.toFixed(2) + "%");
-try {
-  const saved = parseFloat(localStorage.getItem(SPLIT_POS_KEY));
-  if (saved >= 20 && saved <= 80) setSplitPos(saved);
-} catch (e) {}
+if (PREFS.splitPos >= 20 && PREFS.splitPos <= 80) setSplitPos(PREFS.splitPos);
 /* The grab strip is the 10px over the boundary, so the line numbers stay clickable */
 const onBoundary = e => {
   if (!SPLIT) return null;
@@ -1903,7 +1934,7 @@ document.addEventListener("mousedown", e => {
     document.body.classList.remove("resizing");
     removeEventListener("mousemove", move);
     removeEventListener("mouseup", up);
-    if (pct != null) try { localStorage.setItem(SPLIT_POS_KEY, String(pct)); } catch (err) {}
+    if (pct != null) savePrefs({ splitPos: pct });
   };
   addEventListener("mousemove", move);
   addEventListener("mouseup", up);
@@ -1911,7 +1942,7 @@ document.addEventListener("mousedown", e => {
 document.addEventListener("dblclick", e => {
   if (!onBoundary(e)) return;
   setSplitPos(50);
-  try { localStorage.setItem(SPLIT_POS_KEY, "50"); } catch (err) {}
+  savePrefs({ splitPos: 50 });
 });
 
 document.getElementById("drawer-close").addEventListener("click", () => toggleDrawer(false));
@@ -1947,7 +1978,7 @@ document.addEventListener("keydown", e => {
   if (e.key === "j" || e.key === "k") {
     const i = currentGroupIndex() + (e.key === "j" ? 1 : -1);
     if (groups[i]) document.getElementById(groups[i].id).scrollIntoView();
-  } else if (e.key === "p" && HTML_MODE) {
+  } else if (e.key === "p" && DOC_MODE) {
     const cb = document.getElementById("pick-mode");
     cb.checked = !cb.checked;
     cb.dispatchEvent(new Event("change"));
@@ -1958,8 +1989,8 @@ document.addEventListener("keydown", e => {
   }
 });
 
-/* ---------- HTML review mode ---------- */
-/* The reviewed page runs in an iframe served from this same origin, so its DOM is readable.
+/* ---------- Document review mode ---------- */
+/* The reviewed document runs in an iframe served from this same origin, so its DOM is readable.
    Nothing inside it is modified: hover outlines and pins are drawn on an overlay above it. */
 const frame = document.getElementById("target-frame");
 let pendingEl = null;    // key whose composer is open but not saved yet
@@ -1976,6 +2007,78 @@ let hlTimer = null, scrollRaf = 0;
 
 const frameDoc = () => { try { return frame.contentDocument; } catch (e) { return null; } };
 const pickMode = () => document.getElementById("pick-mode").checked;
+
+/* ---------- rows: the document read as lines ---------- */
+/* Commenting works like it does on a diff line: hover a row, press the + that appears in its
+   gutter. The document itself never reacts to the pointer, so nothing outlines or flickers as the
+   cursor travels — the + is the only thing that moves, and it is the only thing you can press. */
+let rows = new Set();    // the commentable blocks of the current render
+let hoverRow = null;     // the row the + currently belongs to
+
+const BLOCK_DISPLAY = new Set([
+  "block", "flow-root", "list-item", "flex", "grid", "table",
+  "table-row", "table-row-group", "table-header-group", "table-footer-group", "table-caption",
+]);
+const MEDIA_TAGS = new Set(["IMG", "VIDEO", "IFRAME", "SVG", "CANVAS"]);
+
+/* One row per innermost block — a paragraph, a heading, a list item, a table row, a code block.
+   Wrappers (<body>, our Markdown <article>, a page's layout divs) hold rows but are not rows
+   themselves; "Comment on the whole document" is how you say something about all of it at once. */
+function collectRows(doc) {
+  const win = doc.defaultView, found = new Set();
+  const isBlock = el => BLOCK_DISPLAY.has(win.getComputedStyle(el).display);
+  const hasInk = el => el.textContent.trim() || MEDIA_TAGS.has(el.tagName) || el.querySelector("img, svg, video");
+  (function visit(el) {
+    const blocks = [...el.children].filter(c => isBlock(c) || MEDIA_TAGS.has(c.tagName));
+    if (!blocks.length) {
+      if (hasInk(el)) found.add(el);
+      return;
+    }
+    // Text sitting directly in a wrapper is its own row (a list item above its nested list)
+    if ([...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) found.add(el);
+    for (const block of blocks) MEDIA_TAGS.has(block.tagName) ? found.add(block) : visit(block);
+  })(doc.body);
+  return found;
+}
+
+const rowOf = el => {
+  for (let node = el; node && node.nodeType === 1; node = node.parentElement)
+    if (rows.has(node)) return node;
+  return null;
+};
+
+/* Park the + in the row's left margin, or just inside it when the margin is too narrow */
+function layoutAddBtn() {
+  const btn = document.getElementById("addbtn");
+  const wrap = document.getElementById("pins");
+  const el = hoverRow;
+  // A row that already has a thread shows its pin instead — one marker per row, never two
+  if (!el || !pickMode() || !el.isConnected || msgsOf(cssPath(el), "el").length) {
+    btn.hidden = true;
+    return;
+  }
+  const r = el.getBoundingClientRect();
+  if (r.bottom < 6 || r.top > wrap.clientHeight - 2) {   // scrolled out of the viewport
+    btn.hidden = true;
+    return;
+  }
+  btn.hidden = false;
+  btn.style.left = Math.max(2, Math.min(r.left - 27, wrap.clientWidth - 24)) + "px";
+  btn.style.top = Math.max(2, Math.min(r.top, wrap.clientHeight - 24)) + "px";
+}
+
+function setHoverRow(el) {
+  hoverRow = el;
+  layoutAddBtn();
+}
+
+/* A Markdown document is rendered by us, so it follows this page's light / dark setting.
+   An HTML file under review is shown exactly as it is — nothing in it is touched. */
+function syncFrameTheme() {
+  if (!DOC_MARKDOWN) return;
+  const doc = frameDoc();
+  if (doc) doc.documentElement.dataset.theme = effectiveTheme();
+}
 
 /* Selector that finds the element again. Anchored at the nearest id when there is one */
 function cssPath(el) {
@@ -2000,7 +2103,7 @@ function describe(el) {
 }
 const anchorOf = el => ({ sel: cssPath(el), tag: el.tagName.toLowerCase(), text: elText(el), label: describe(el) });
 function anchorLabel(key) {
-  if (key === "page") return "the whole page";
+  if (key === "page") return L("the whole document");
   return state.elAnchors[key]?.label || key;
 }
 /* Find the anchored element. Falls back to the same text when the page was rewritten */
@@ -2036,8 +2139,8 @@ function renderThreadCol() {
   for (const k of keys) if (k !== "page") elNums.set(k, ++n);
   if (!keys.length) {
     list.innerHTML = (LANG === "ja"
-      ? `<div class="tc-empty">まだコメントはありません。<br>左のページの気になる部分をクリックしてください。</div>`
-      : `<div class="tc-empty">No comments yet.<br>Click anything in the page on the left.</div>`);
+      ? `<div class="tc-empty">まだコメントはありません。<br>左のドキュメントの行の左に出る + を押してください。</div>`
+      : `<div class="tc-empty">No comments yet.<br>Press the + next to a row in the document on the left.</div>`);
     layoutPins();
     return;
   }
@@ -2051,7 +2154,7 @@ function renderThreadCol() {
       <div class="tc-anchor" data-elfold="${esc(key)}" title="${folded ? "Unfold this comment" : "Fold this comment"}">
         <button class="caret">▼</button>
         <button class="num" data-elgoto="${esc(key)}"
-          title="${esc(key === "page" ? "the whole page" : state.elAnchors[key]?.sel || key)}"
+          title="${esc(key === "page" ? L("the whole document") : state.elAnchors[key]?.sel || key)}"
           >${key === "page" ? "◎" : elNums.get(key)}</button>
         <span class="lbl">${esc(anchorLabel(key))}</span>
         ${lost ? `<span class="lost">${L("anchor lost")}</span>` : ""}
@@ -2074,6 +2177,7 @@ function syncThreadCol() {
     if (!msgsOf(k, "el").length && k !== pendingEl) delete state.elAnchors[k];
   renderThreadCol();
   refreshCounters();
+  layoutAddBtn();   // a row that just gained (or lost) a thread swaps its + for a pin, or back
 }
 
 function layoutPins() {
@@ -2092,7 +2196,8 @@ function layoutPins() {
     pin.textContent = num;
     pin.dataset.elgoto = key;
     pin.title = anchorLabel(key);
-    pin.style.left = Math.max(2, Math.min(r.left, w - 26)) + "px";
+    // Same gutter the + uses, so a row's marker never moves once it has been commented on
+    pin.style.left = Math.max(2, Math.min(r.left - 27, w - 24)) + "px";
     pin.style.top = Math.max(2, Math.min(r.top, h - 24)) + "px";
     wrap.appendChild(pin);
   }
@@ -2152,38 +2257,46 @@ function startPageComment() {
   threadHost("page", "el")?.querySelector("textarea")?.focus();
 }
 
-function initHtmlMode() {
+function initDocMode() {
   const preview = document.getElementById("preview");
   const pick = document.getElementById("pick-mode");
   preview.classList.toggle("picking", pick.checked);
   pick.addEventListener("change", () => {
     preview.classList.toggle("picking", pick.checked);
     document.getElementById("pick-hint").hidden = !pick.checked;
-    if (!pick.checked) hideHl();
-    layoutPins();   // pins come back when commenting resumes
+    layoutPins();   // pins and the + come back when commenting resumes
+    layoutAddBtn();
   });
   document.getElementById("page-comment-btn").addEventListener("click", startPageComment);
   document.getElementById("comment-count").classList.add("active");   // the column starts open
-  addEventListener("resize", layoutPins);
+  addEventListener("resize", () => { layoutPins(); layoutAddBtn(); });
+
+  const addBtn = document.getElementById("addbtn");
+  addBtn.addEventListener("click", () => { if (hoverRow) startElComment(hoverRow); });
+  // Pressing the + is a deliberate act, so outlining its row here can never flicker
+  addBtn.addEventListener("mouseenter", () => { if (hoverRow) showHl(hoverRow, describe(hoverRow)); });
+  addBtn.addEventListener("mouseleave", hideHl);
+
   frame.addEventListener("load", () => {
     const doc = frameDoc();
-    if (!doc) return;   // cross-origin (should not happen: the page is served from /target)
+    if (!doc) return;   // cross-origin (should not happen: it is served from /target)
+    syncFrameTheme();
+    rows = collectRows(doc);
+    setHoverRow(null);
     doc.addEventListener("click", e => {
+      // Nothing in the document is clickable while commenting — the + is the only way in
+      if (pickMode()) { e.preventDefault(); e.stopPropagation(); }
+    }, true);
+    doc.addEventListener("mousemove", e => {
       if (!pickMode()) return;
-      e.preventDefault();      // do not follow links or submit forms while commenting
-      e.stopPropagation();
-      const el = e.target.nodeType === 1 ? e.target : e.target.parentElement;
-      if (el) startElComment(el);
-    }, true);
-    doc.addEventListener("mouseover", e => {
-      const el = e.target.nodeType === 1 ? e.target : null;
-      if (!pickMode() || !el || el === doc.documentElement) { hideHl(); return; }
-      showHl(el, describe(el));
-    }, true);
-    doc.addEventListener("mouseleave", hideHl, true);
+      const row = rowOf(e.target);
+      // Between two rows there is no row at all: keep the + where it is rather than blinking it out
+      if (row && row !== hoverRow) setHoverRow(row);
+    }, { passive: true, capture: true });
+    doc.addEventListener("mouseout", e => { if (!e.relatedTarget) setHoverRow(null); }, true);
     frame.contentWindow.addEventListener("scroll", () => {
       if (scrollRaf) return;
-      scrollRaf = requestAnimationFrame(() => { scrollRaf = 0; hideHl(); layoutPins(); });
+      scrollRaf = requestAnimationFrame(() => { scrollRaf = 0; hideHl(); layoutPins(); layoutAddBtn(); });
     }, { passive: true });
     // Restore the page's scroll position after a reload triggered by the AI fixing the HTML
     const y = sessionStorage.getItem(SS_FRAME);
@@ -2191,10 +2304,10 @@ function initHtmlMode() {
     syncThreadCol();
   });
   if (SERVER) frame.src = "/target";
-  else if (DATA.htmlInline) frame.srcdoc = DATA.htmlInline;   // static build (--build)
+  else if (DATA.docInline) frame.srcdoc = DATA.docInline;   // static build (--build)
   renderThreadCol();
 }
-if (HTML_MODE) initHtmlMode();
+if (DOC_MODE) initDocMode();
 
 /* ---------- init ---------- */
 /* The chrome written straight into the markup is English; a Japanese review swaps it out here.
@@ -2212,7 +2325,7 @@ function localizeChrome() {
   };
   opt("split-mode", "左右に分割", "差分を左右に並べる（左が変更前・右が変更後）");
   opt("hide-tests", "テストを隠す", "テストファイルの hunk を隠す");
-  opt("pick-mode", "コメントモード", "ページの要素をクリックしてコメントする（切るとページを普通に操作できる）");
+  opt("pick-mode", "コメントモード", "行の左に + を出してコメントする（切ると普通に操作できる）");
   txt("#copy-btn", "まとめをコピー");
   txt("#finish-btn", "レビューを終える");
   ttl("#finish-btn", "結果をエージェントのセッションに送り返す");
@@ -2223,10 +2336,10 @@ function localizeChrome() {
   ttl("#drawer-close", "閉じる");
   txt("#drawer .ttl", "コメント");
   txt("#threadcol .ttl", "コメント");
-  txt("#page-comment-btn", "ページ全体について");
-  ttl("#page-comment-btn", "ページ全体に対してコメントする");
-  txt("#pick-hint", "ページの気になる部分をクリックするとコメントできます");
-  ttl("#target-frame", "レビュー対象のページ");
+  txt("#page-comment-btn", "＋ ドキュメント全体にコメント");
+  ttl("#page-comment-btn", "ひとつの要素ではなく、ドキュメント全体についてコメントする");
+  txt("#pick-hint", "気になる行にカーソルを合わせ、左に出る + でコメントできます");
+  ttl("#target-frame", "レビュー対象のドキュメント");
   txt("#update-bar span", "解説が書き直されました");
   txt("#update-apply", "ページに反映");
   ttl('[data-kind="doc"][data-key="overview"]', "概要にコメントする");
@@ -2240,17 +2353,17 @@ function localizeChrome() {
       <tr class="diff-only"><td class="key">コピー</td><td>ファイル名の隣のボタンでそのパスをコピーする</td></tr>
       <tr class="diff-only"><td class="key">j / k</td><td>次 / 前のグループへ移動</td></tr>
       <tr class="diff-only"><td class="key">左右に分割</td><td>左右に並べる（左が変更前・右が変更後）か1列にするかの切替。境界はドラッグで動かせる（ダブルクリックで中央に戻る）。選んだ状態は記憶される</td></tr>
-      <tr class="html-only"><td class="key">クリック</td><td>ページの要素をクリックするとその要素にコメントできる</td></tr>
-      <tr class="html-only"><td class="key">ピン</td><td>コメントした要素には番号付きのピンが付く。ピンとコメントは相互に行き来できる</td></tr>
-      <tr class="html-only"><td class="key">p</td><td>コメントモードの切替（切るとページのリンクやボタンを普通に押せる）</td></tr>
-      <tr class="html-only"><td class="key">コメント</td><td>ヘッダーのカウンタでコメント欄を出し入れする</td></tr>
+      <tr class="doc-only"><td class="key">＋</td><td>段落・見出し・リスト項目・表の行にカーソルを合わせ、左に出る + でコメントする</td></tr>
+      <tr class="doc-only"><td class="key">ピン</td><td>コメントした行は + が番号付きのピンに変わる。ピンとコメントは相互に行き来できる</td></tr>
+      <tr class="doc-only"><td class="key">p</td><td>コメントモードの切替（切るとドキュメントのリンクやボタンを普通に押せる）</td></tr>
+      <tr class="doc-only"><td class="key">コメント</td><td>ヘッダーのカウンタでコメント欄を出し入れする</td></tr>
       <tr><td class="key">c</td><td>まとめをコピー</td></tr>
       <tr><td class="key">⌘Enter</td><td>コメント編集中に保存</td></tr>
       <tr><td class="key">Esc</td><td>コメント編集の取消 / コメント一覧を閉じる</td></tr>
     </table>
-    <p class="html-only" style="font-size:13px;color:var(--ink-soft)">コメントはクリックした要素に紐づきます。
-    AIがHTMLを直すと、このページは数秒で新しい表示に入れ替わり、コメントはその要素に付いたまま残ります
-    （要素そのものが無くなった場合は「参照先なし」と表示されます）。</p>
+    <p class="doc-only" style="font-size:13px;color:var(--ink-soft)">コメントは + を押した行に紐づきます。
+    AIがファイルを直すと、このページは数秒で新しい表示に入れ替わり、コメントはその行に付いたまま残ります
+    （その行そのものが無くなった場合は「参照先なし」と表示されます）。</p>
     <p style="font-size:13px;color:var(--ink-soft)">コメントは自動で保存されます。
     「レビューを終える」で結果がエージェントのセッションに送られます（送ったあともページはそのまま使えます）。
     回答が付いたら「返信」でスレッドを続け、もう一度「レビューを終える」を押すと送り返されます。

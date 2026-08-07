@@ -1,6 +1,6 @@
 ---
 name: kaisetu
-description: Group a large diff by intent and launch a local review UI, sorted by importance with AI explanations. The human makes the review judgments; comments made on screen come back to the session via "Finish review". Use explicitly for large diffs or self-review after implementing a plan.
+description: Group a large diff by intent and launch a local review UI, sorted by importance with AI explanations. The human makes the review judgments; comments made on screen come back to the session via "Finish review". Use explicitly for large diffs or self-review after implementing a plan. Given an .html or .md file instead, it reviews that document itself - rendered in the UI and commented on row by row with a + button, with no grouping or explanations.
 ---
 
 # kaisetu
@@ -23,10 +23,10 @@ from the text, so set `lang` in review-data.json only when the detection would g
 There are two modes, decided by what is being reviewed:
 
 - **Diff review** (default) — steps 1–6 below.
-- **HTML review** — the target is an HTML file itself. No diff, no grouping, no explanations:
-  the page is rendered and the human comments on it element by element.
-  Use it when the user passes an `.html` file or asks to review a rendered page / a document that is
-  an HTML file. See "HTML review mode" at the end.
+- **Document review** — the target is a document file itself, `.html` or `.md`. No diff, no grouping,
+  no explanations: it is rendered, and the human comments on it row by row with the same `+` button
+  they use on a diff line. Use it when the user passes an `.html` or `.md` file, or asks to review a
+  rendered page or a written document. See "Document review mode" at the end.
 
 ## Overall flow
 
@@ -143,34 +143,42 @@ Comments are **threads** (human comment → AI answer → human reply → …).
    Delete the result file and re-run the wait command from step 3–4.3 to detect the next round the same way.
    When the review exchange is fully done, clean up with `kill <pid>` using the pid printed at startup.
 
-## HTML review mode (the target is an HTML file)
+## Document review mode (the target is an HTML or Markdown file)
 
-For reviewing an HTML file itself — a shared explainer, a report, a generated page.
-**Skip steps 1–2 entirely: no diff, no grouping, no explanations.** The human reads the rendered page
-and comments on the parts that need changing; you fix the HTML.
+For reviewing a document itself — a shared explainer, a report, a generated page, a spec or design
+doc written in Markdown.
+**Skip steps 1–2 entirely: no diff, no grouping, no explanations.** The human reads the rendered
+document and comments on the parts that need changing; you fix the source file.
 
 1. Create `$REVIEW_DIR` as in step 1 and write `review-data.json` with just these fields:
    ```json
    {
-     "title": "Review of the release notes page",
-     "html": "docs/release-notes.html",
+     "title": "Review of the release notes",
+     "doc": "docs/release-notes.md",
      "generatedAt": "2026-08-05 10:00",
      "repoRoot": "/Users/me/repos/myapp"
    }
    ```
-   `html` is the reviewed file, absolute or relative to the server CWD (= the target repo root).
+   `doc` is the reviewed file, absolute or relative to the server CWD (= the target repo root).
+   `.md` is rendered to HTML by the server; `.html` is shown as it is.
    Add nothing else — no `groups`, `overview`, `stats`, or explanations.
    Write `meta.json` as usual so `/kaisetu-list` can reopen it.
 2. Start the server and set up completion detection exactly as in steps 3–4.
-   The page renders the file in an iframe; files next to it (CSS, images, JS) are served too.
-3. The human clicks any element to comment on it, or "On the whole page" for a page-wide comment.
-   Numbered pins mark commented elements.
+   The page renders the document in an iframe; files next to it (images, CSS, JS, other `.md`) are
+   served too, so relative links work.
+3. Commenting works like it does on a diff line: the human hovers a row — a paragraph, heading,
+   list item, table row, code block — and presses the `+` that appears in its gutter. A commented
+   row keeps a numbered pin in place of its `+`. "+ Comment on the whole document" above the
+   document covers the document as a whole.
 4. Read the result JSON's **`elementComments`** and act on each thread with `awaiting: true`:
-   - `selector` — CSS selector of the element (`null` means the comment is about the whole page)
+   - `selector` — CSS selector of the row (`null` means the comment is about the whole document).
+     For Markdown, headings carry an id, so a selector like `#open-questions` points straight at
+     the heading whose section the comment belongs to
    - `label` / `text` — which element it was and the text it contained; use these to find the spot
      in the source
-   - `anchored: false` — the element no longer exists (the page changed after the comment was written)
-   - Fix the HTML file directly. The server watches it, so the page reloads with your fix within
+   - `anchored: false` — the element no longer exists (the document changed after the comment was
+     written)
+   - Fix the source file directly. The server watches it, so the page reloads with your fix within
      seconds and the comments stay anchored.
    - Answer in `$REVIEW_DIR/review-data.replies.json` under `elementComments`
      (`key` = the result's `key`; see schema.md).

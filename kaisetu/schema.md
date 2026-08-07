@@ -89,29 +89,36 @@ Consolidate scattered URL building and host checks into resolveAppUrl ＝ URLs a
 - The half-width `=` does NOT split (so `=` inside code is never caught). A line with no meaningful
   outcome can omit `＝`.
 
-## HTML review mode
+## Document review mode
 
-When `html` is set, the reviewed target is that HTML file itself. The page renders it in an iframe and
-the human comments on its elements — no groups, no explanations.
+When `doc` is set, the reviewed target is that document file itself. The page renders it in an iframe
+and the human comments on its elements — no groups, no explanations.
 
 ```jsonc
 {
-  "title": "Review of the release notes page",
-  "html": "docs/release-notes.html",   // reviewed file: absolute, or relative to the server CWD / this file
+  "title": "Review of the release notes",
+  "doc": "docs/release-notes.md",   // reviewed file: absolute, or relative to the server CWD / this file
   "generatedAt": "2026-08-05 10:00",
   "repoRoot": "/Users/me/repos/myapp"
 }
 ```
 
 - All diff-review fields (`groups`, `overview`, `tagline`, `stats`, `base`, `plan`) are omitted.
-- Files sitting next to the HTML (CSS, JS, images) are served, so relative links work.
-- Rewriting the HTML file bumps the version, so the page reloads with the new render within seconds;
+- `.md` / `.markdown` is rendered to HTML by the server; `.html` is served exactly as written.
+  The rendered Markdown follows the review page's light / dark setting; a reviewed HTML file is
+  never touched.
+- Files sitting next to the document (images, CSS, JS, and other Markdown files) are served, so
+  relative links work.
+- Rewriting the source file bumps the version, so the page reloads with the new render within seconds;
   comments stay anchored to their elements.
-- `htmlInline` is added by `serve.py --build` only (it embeds the page for the static, server-less HTML).
-  Never write it by hand.
+- `docKind` (`"markdown"` | `"html"`) is filled in by `serve.py` from the file's extension, and
+  `docInline` is added by `serve.py --build` only (it embeds the rendered document for the static,
+  server-less HTML). Never write either by hand.
 
 Comments are anchored to a CSS selector (`body > main > p:nth-of-type(1)`), with the element's text kept
-as a fallback anchor for when the page changes. `key: "page"` is a comment on the page as a whole.
+as a fallback anchor for when the document changes. Markdown headings are rendered with an id, so their
+selectors (`#open-questions`) survive edits anywhere else in the file. `key: "page"` is a comment on the
+document as a whole.
 
 ## Granularity guide
 
@@ -160,7 +167,7 @@ append to the `replies` arrays** (removing past answers removes them from the pa
   "docComments": [
     { "target": "overview", "replies": ["Trimmed to 3 points and moved the legacy-path item first."] }
   ],
-  "elementComments": [                  // HTML review mode
+  "elementComments": [                  // document review mode
     { "key": "body > main > p:nth-of-type(1)", "replies": ["Fixed: replaced the jargon with plain wording."] }
   ]
 }
@@ -212,17 +219,17 @@ Written when "Finish review" is pressed. Each comment is a thread of alternating
   "docComments": [                // comments on prose the AI wrote (overview / section explanations)
     { "target": "overview", "label": "Overview", "messages": [ … ], "resolved": false, "awaiting": true }
   ],
-  "elementComments": [            // HTML review mode: comments on elements of the reviewed page
+  "elementComments": [            // document review mode: comments on elements of the reviewed document
     {
       "key": "body > main > p:nth-of-type(1)",
-      "selector": "body > main > p:nth-of-type(1)",   // null = a comment on the whole page (key "page")
+      "selector": "body > main > p:nth-of-type(1)",   // null = a comment on the whole document (key "page")
       "label": "p “The checkout flow now confirms payment in a …”",
       "text": "The checkout flow now confirms payment in a single step. …",  // text at comment time
-      "anchored": true,           // false = that element no longer exists in the current HTML
+      "anchored": true,           // false = that element no longer exists in the current render
       "messages": [ … ], "resolved": false, "awaiting": true
     }
   ],
-  "html": "docs/release-notes.html",   // reviewed page (null in diff mode)
+  "doc": "docs/release-notes.md",   // reviewed document (null in diff mode)
   "markdown": "…"                 // human-readable summary (threads as nested bullet lists)
 }
 ```
@@ -238,13 +245,22 @@ Written when "Finish review" is pressed. Each comment is a thread of alternating
 - Groups containing `type: "question"` annotations get a "question" badge in the index.
 - Human comments are saved to localStorage and to the server's state.json. The localStorage key is
   derived from the diff structure (hunk IDs and bodies), so rewriting explanations preserves comments.
-  In HTML review mode it comes from the reviewed page's path, so fixing the page preserves them too.
-- HTML review mode: elements are anchored by CSS selector, falling back to their text when the page
-  changed. Commented elements get numbered pins over the page, and threads sit in a right-hand column in
-  page order — the header's comment counter toggles that column (there is no separate drawer; the pin and
-  the number badge jump between page and thread). Clicking a card's header folds the thread; resolved
-  threads start folded, showing the anchor line plus a one-line preview. Turning off "Comment mode" (`p`)
-  hides the pins and lets the human use the page normally (links, buttons).
+  In document review mode it comes from the reviewed file's path, so fixing it preserves them too.
+- How the reader likes the page — `theme`, `split`, `splitPos` — is kept per user in
+  `~/.kaisetu/prefs.json` and embedded into the page at render time, so a setting made in one review
+  is already in place when the next one opens. It cannot live in localStorage: each review is served
+  on a fresh port, and localStorage is scoped to the origin. serve.py owns this file; never write
+  review data into it.
+- Document review mode: the render is read as rows — the innermost blocks (paragraph, heading, list
+  item, table row, code block); wrappers are not rows. Hovering a row puts a `+` in its gutter and
+  pressing it opens the comment, the same gesture as the `+` on a diff line; the document itself
+  never reacts to the pointer. Rows are anchored by CSS selector, falling back to their text when the
+  document changed. A commented row keeps a numbered pin where its `+` was, and threads sit in a
+  right-hand column in document order — the header's comment counter toggles that column (there is no
+  separate drawer; the pin and the number badge jump between document and thread). Clicking a card's
+  header folds the thread; resolved threads start folded, showing the anchor line plus a one-line
+  preview. Turning off "Comment mode" (`p`) hides the `+` and the pins and lets the human use the
+  document normally (links, buttons).
 - Comments are threads. A "Reply" button appears under each AI answer so the human can continue.
   Threads ending with a human message show "Awaiting AI reply", and the header comment counter shows
   "awaiting N".
