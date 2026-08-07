@@ -9,10 +9,11 @@ the page follow automatically.
 The calling agent watches for the result JSON, reads it, and kills this process
 when it is no longer needed.
 
-When review-data.json has an `html` field, the page reviews that HTML file
-itself: it is served at /target (with its sibling assets) and shown in an
-iframe the human comments on element by element. Rewriting the HTML bumps the
-version, so the page reloads with the fixed page.
+When review-data.json has a `doc` field, the page reviews that document itself:
+it is served at /target (with its sibling assets) and shown in an iframe the
+human comments on element by element. Markdown is rendered to HTML on the way
+out; an HTML file is served as it is. Rewriting the file bumps the version, so
+the page reloads with the fixed document.
 
 Usage:
   serve.py <review-data.json> [--port N] [--result PATH] [--no-open]
@@ -31,28 +32,52 @@ import urllib.parse
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import md_render
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+MARKDOWN_SUFFIXES = (".md", ".markdown", ".mdown", ".mkd")
+
+# How the reader likes the page itself (theme, diff layout) — kept per user, not per review.
+# Every review is served on a fresh port and localStorage is scoped to the origin, so a browser-side
+# store would forget these the moment the next review opened on a different port.
+PREFS_PATH = pathlib.Path.home() / ".kaisetu" / "prefs.json"
+
+PLACEHOLDERS = ("__REVIEW_DATA__", "__REVIEW_STATE__", "__REVIEW_VERSION__", "__REVIEW_PREFS__")
 
 
-PLACEHOLDERS = ("__REVIEW_DATA__", "__REVIEW_STATE__", "__REVIEW_VERSION__")
+def load_prefs() -> dict:
+    try:
+        prefs = json.loads(PREFS_PATH.read_text(encoding="utf-8"))
+        return prefs if isinstance(prefs, dict) else {}
+    except (OSError, ValueError):
+        return {}
 
 
-def render(data: dict, state_text: str = "null", version: str = "static") -> str:
+def save_prefs(update: dict) -> None:
+    prefs = load_prefs()
+    prefs.update(update)
+    PREFS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    PREFS_PATH.write_text(json.dumps(prefs, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def render(data: dict, state_text: str = "null", version: str = "static", prefs: dict = None) -> str:
     template = (ROOT / "template.html").read_text(encoding="utf-8")
     payload = json.dumps(data, ensure_ascii=False)
     # Escape sequences that could be parsed as a closing tag inside <script>
     payload = payload.replace("</", "<\\/")
     state_payload = state_text.replace("</", "<\\/")
+    prefs_payload = json.dumps(prefs or {}, ensure_ascii=False).replace("</", "<\\/")
     missing = [p for p in PLACEHOLDERS if p not in template]
     if missing:
         sys.exit(f"template.html is missing placeholders: {' / '.join(missing)}")
     return (template.replace("__REVIEW_DATA__", payload)
                     .replace("__REVIEW_STATE__", state_payload)
-                    .replace("__REVIEW_VERSION__", version))
+                    .replace("__REVIEW_VERSION__", version)
+                    .replace("__REVIEW_PREFS__", prefs_payload))
 
 
 def resolve_ref(ref: str, data_path: pathlib.Path):
-    """Resolve a path written in review-data.json (plan / html).
+    """Resolve a path written in review-data.json (plan / doc).
 
     Tried as an absolute path, relative to the server CWD, then relative to the data file.
     """
@@ -60,6 +85,17 @@ def resolve_ref(ref: str, data_path: pathlib.Path):
         if base.is_file():
             return base
     return None
+
+
+def is_markdown(path: pathlib.Path) -> bool:
+    return path.suffix.lower() in MARKDOWN_SUFFIXES
+
+
+def as_html(path: pathlib.Path) -> bytes:
+    """The reviewed document as HTML — Markdown rendered, HTML passed through byte for byte."""
+    if not is_markdown(path):
+        return path.read_bytes()
+    return md_render.render_document(path.read_text(encoding="utf-8"), path.name).encode("utf-8")
 
 
 def free_port() -> int:
@@ -85,15 +121,23 @@ def main() -> None:
     def load_data() -> dict:
         return json.loads(data_path.read_text(encoding="utf-8"))
 
-    # HTML review mode: the reviewed page itself (served at /target), or None in diff mode
-    def html_target():
-        ref = load_data().get("html")
+    # Document review mode: the reviewed file itself (served at /target), or None in diff mode
+    def doc_target():
+        ref = load_data().get("doc")
         return resolve_ref(ref, data_path) if ref else None
 
+    def page_data() -> dict:
+        # docKind tells the page whether the iframe holds our own render (Markdown) or the file itself
+        data = load_data()
+        target = doc_target()
+        if target:
+            data["docKind"] = "markdown" if is_markdown(target) else "html"
+        return data
+
     def data_version() -> str:
-        # The reviewed HTML counts too: fixing it makes the page reload with the new render
+        # The reviewed document counts too: fixing it makes the page reload with the new render
         parts = [str(data_path.stat().st_mtime_ns)]
-        target = html_target()
+        target = doc_target()
         if target:
             parts.append(str(target.stat().st_mtime_ns))
         return "-".join(parts)
@@ -103,12 +147,12 @@ def main() -> None:
 
     if args.build is not None:
         out = data_path.with_suffix(".html") if args.build == "-" else pathlib.Path(args.build)
-        data = load_data()
-        target = html_target()
+        data = page_data()
+        target = doc_target()
         if target:
-            # No server to serve /target from, so inline the reviewed page (rendered via srcdoc)
-            data["htmlInline"] = target.read_text(encoding="utf-8")
-        out.write_text(render(data, state_text()), encoding="utf-8")
+            # No server to serve /target from, so inline the reviewed document (rendered via srcdoc)
+            data["docInline"] = as_html(target).decode("utf-8")
+        out.write_text(render(data, state_text(), prefs=load_prefs()), encoding="utf-8")
         print(out)
         return
 
@@ -132,8 +176,11 @@ def main() -> None:
             self.wfile.write(body)
 
         def _serve_asset(self) -> bool:
-            """Serve a file sitting next to the reviewed HTML (its relative css / js / images)."""
-            target = html_target()
+            """Serve a file sitting next to the reviewed document (its relative css / js / images).
+
+            A neighbouring Markdown file is rendered as well, so links between docs work.
+            """
+            target = doc_target()
             if not target:
                 return False
             rel = urllib.parse.unquote(self.path.split("?", 1)[0].split("#", 1)[0].lstrip("/"))
@@ -141,8 +188,11 @@ def main() -> None:
                 return False
             base = target.parent.resolve()
             path = (base / rel).resolve()
-            if not path.is_file() or not path.is_relative_to(base):  # no escaping the page's directory
+            if not path.is_file() or not path.is_relative_to(base):  # no escaping the doc's directory
                 return False
+            if is_markdown(path):
+                self._respond(200, as_html(path), "text/html; charset=utf-8")
+                return True
             ctype = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
             if ctype.startswith("text/") or ctype in (
                 "application/javascript", "application/json", "image/svg+xml"
@@ -154,7 +204,7 @@ def main() -> None:
         def do_GET(self):
             if self.path in ("/", "/index.html"):
                 # Render on every request, embedding the latest review data and state (comment drafts)
-                body = render(load_data(), state_text(), data_version()).encode("utf-8")
+                body = render(page_data(), state_text(), data_version(), load_prefs()).encode("utf-8")
                 self._respond(200, body, "text/html; charset=utf-8")
             elif self.path == "/api/replies":
                 body = replies_path.read_bytes() if replies_path.is_file() else b"{}"
@@ -169,26 +219,33 @@ def main() -> None:
                     self._respond(404, b"plan not set")
                     return
                 found = resolve_ref(plan, data_path)
-                if found:
+                if found and is_markdown(found):
+                    # It opens in a new tab, so a Markdown plan is rendered rather than dumped raw
+                    self._respond(200, as_html(found), "text/html; charset=utf-8")
+                elif found:
                     self._respond(200, found.read_text(encoding="utf-8").encode("utf-8"))
                 else:
                     self._respond(404, f"plan not found: {plan}".encode("utf-8"))
             elif self.path == "/target":
-                # HTML review mode: the reviewed page, shown in the page's iframe
-                ref = load_data().get("html")
+                # Document review mode: the reviewed document, shown in the page's iframe
+                ref = load_data().get("doc")
                 if not ref:
-                    self._respond(404, b"html not set")
+                    self._respond(404, b"doc not set")
                     return
-                target = html_target()
+                target = doc_target()
                 if target:
-                    self._respond(200, target.read_bytes(), "text/html; charset=utf-8")
+                    self._respond(200, as_html(target), "text/html; charset=utf-8")
                 else:
-                    self._respond(404, f"html not found: {ref}".encode("utf-8"))
+                    self._respond(404, f"doc not found: {ref}".encode("utf-8"))
             elif not self._serve_asset():
                 self._respond(404, b"not found")
 
         def do_POST(self):
-            if self.path == "/api/state":
+            if self.path == "/api/prefs":
+                # Theme and diff layout, remembered for the next review as well as this one
+                save_prefs(self._json_body())
+                self._respond()
+            elif self.path == "/api/state":
                 state_path.write_text(
                     json.dumps(self._json_body(), ensure_ascii=False, indent=2),
                     encoding="utf-8",

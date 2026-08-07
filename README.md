@@ -53,14 +53,17 @@ Restart Claude Code, then:
 /kaisetu abc1234            # a single commit
 /kaisetu main..HEAD         # any revision range git understands
 /kaisetu HEAD~3..HEAD       # e.g. the last 3 commits
-/kaisetu docs/report.html   # review the rendered HTML page itself
+/kaisetu docs/report.html   # review the rendered page itself
+/kaisetu docs/design.md     # review a Markdown document the same way
 /kaisetu-list               # list and reopen past reviews
 ```
 
 The scope argument is free-form: commit hashes, ranges, branch names, or plain
 words — the agent passes whatever revisions you name to `git diff`.
-Name an `.html` file instead and it switches to HTML review: the page is rendered in an iframe and you
-comment element by element, with numbered pins marking what you flagged.
+Name an `.html` or `.md` file instead and it switches to document review: the file is rendered, and
+you comment on it the same way you comment on a diff line — hover a paragraph, press the + that
+appears next to it. No summary, no explanations — just the document, your comments, and the agent
+fixing the source.
 
 ### Codex
 

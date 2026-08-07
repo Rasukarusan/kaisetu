@@ -25,7 +25,7 @@ over all entries works well):
 - Status: **finished** if `review-data.result.json` exists in the same directory. If so, also get the
   comment count with jq: length of
   `(.comments // []) + (.groupComments // []) + (.docComments // []) + (.elementComments // [])`
-  (`elementComments` appears in HTML reviews)
+  (`elementComments` appears in document reviews)
 
 ## 2. Present the list and let the user choose
 
