@@ -49,7 +49,7 @@ Restart Claude Code, then:
 
 ```
 /kaisetu                    # review uncommitted changes (git diff HEAD)
-/kaisetu the whole branch   # diff against the repo's base branch
+/kaisetu the whole branch   # diff against the branch it was forked from
 /kaisetu abc1234            # a single commit
 /kaisetu main..HEAD         # any revision range git understands
 /kaisetu HEAD~3..HEAD       # e.g. the last 3 commits

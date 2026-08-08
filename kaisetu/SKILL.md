@@ -43,8 +43,12 @@ There are two modes, decided by what is being reviewed:
   Create a fresh timestamped directory per review (past reviews are browsed via `/kaisetu-list`, so never overwrite).
   This directory is referred to as `$REVIEW_DIR` below.
 - Scope: follow the user's arguments if given. Otherwise use uncommitted changes (`git diff HEAD`).
-  For a whole branch, determine the repo's default base branch and use `git diff $BASE...HEAD`
-  (check the remote HEAD, then the PR base, then fall back to `main`).
+  For a whole branch, identify the branch this one was forked from **before** taking the diff:
+  ```bash
+  BASE=$(bash $SKILL_DIR/scripts/base-branch.sh)  # PR base → reflog fork record → remote HEAD → main
+  git diff "$BASE"...HEAD
+  ```
+  If it prints `UNKNOWN` (exit 1), ask the user which branch to diff against instead of guessing.
 - Save:
   - `diff.patch`: the full diff (`git diff ... > diff.patch`)
   - stats: `git diff --shortstat` and `grep -c '^@@' diff.patch` (files / hunks / +N −N)

@@ -48,7 +48,7 @@ Claude Code を再起動して:
 
 ```
 /kaisetu                    # 未コミットの変更をレビュー (git diff HEAD)
-/kaisetu ブランチ全体        # ベースブランチとの差分
+/kaisetu ブランチ全体        # 派生元ブランチとの差分
 /kaisetu abc1234            # コミット単体
 /kaisetu main..HEAD         # git が理解する任意のリビジョン範囲
 /kaisetu HEAD~3..HEAD       # 例: 直近3コミット
