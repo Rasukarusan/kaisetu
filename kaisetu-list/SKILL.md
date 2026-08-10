@@ -1,6 +1,6 @@
 ---
 name: kaisetu-list
-description: List past kaisetu reviews and re-open the review UI (local server) for the one the user picks. After selection, only start the server; handle comments only after "Finish review" is pressed on the page.
+description: List past kaisetu reviews and re-open the review UI (local server) for the one the user picks. After selection, only start the server; handle comments only after "Finish" is pressed on the page.
 ---
 
 # kaisetu-list
@@ -48,7 +48,13 @@ Do not act on past comments or present summaries yet.
    immediately; on-screen comments are restored from the browser's localStorage, so nothing is lost).
 2. Follow steps 3–4 onward of the kaisetu skill's SKILL.md to start the server with that
    `review-data.json` (use `repoRoot` as CWD). Set up the background completion wait the same way.
-3. Say only "The review page is open" and wait. When the user presses "Finish review", follow
-   kaisetu's steps 5–6 to read and handle the result.
+3. A review reopened weeks later shows the code as it was on the day it was written. If the user
+   wants it against the working tree as it stands now, re-take the diff with
+   `python3 <kaisetu skill dir>/scripts/refresh.py <review-data.json>` — the explanations and the
+   old comments survive, and everything that moved since is badged "updated". Offer this rather
+   than starting a new review. It needs `scope` in the data; reviews written without it can only
+   be read as the snapshot they are.
+4. Say only "The review page is open" and wait. When the user presses "Finish", follow
+   kaisetu's steps 5–7 to read and handle the result.
 
 All subsequent file operations and diff references are relative to `repoRoot`.

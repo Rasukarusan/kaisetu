@@ -1,6 +1,6 @@
 ---
 name: kaisetu
-description: Group a large diff by intent and launch a local review UI, sorted by importance with AI explanations. The human makes the review judgments; comments made on screen come back to the session via "Finish review". Use explicitly for large diffs or self-review after implementing a plan. Given an .html or .md file instead, it reviews that document itself - rendered in the UI and commented on row by row with a + button, with no grouping or explanations.
+description: Group a large diff by intent and launch a local review UI, sorted by importance with AI explanations. The human makes the review judgments; comments made on screen come back to the session via "Finish". Use explicitly for large diffs or self-review after implementing a plan. Given an .html or .md file instead, it reviews that document itself - rendered in the UI and commented on row by row with a + button, with no grouping or explanations.
 ---
 
 # kaisetu
@@ -32,10 +32,15 @@ There are two modes, decided by what is being reviewed:
 
 ```
 1. Collect diff → 2. Group + explain → 3. Generate review-data.json → 4. Start serve.py (browser opens)
-→ 5. Human comments on screen (diff lines, groups, overview, AI explanations) → "Finish review"
+→ 5. Human comments on screen (diff lines, groups, overview, AI explanations) → "Finish"
 → 6. Read the result JSON and respond (fix code / answer / rewrite explanations)
+→ 7. Re-take the diff so the page shows the fixed code
      ↑___ human replies to answers and resubmits (threads); rewritten explanations auto-refresh the page ___|
 ```
+
+Steps 1–2 are the expensive half and they stay true after the code is fixed, so **the skill is run
+once per review**. Everything after that — new answers, rewritten explanations, fixed code — updates
+the page that is already open.
 
 ## 1. Collect the diff
 
@@ -49,6 +54,10 @@ There are two modes, decided by what is being reviewed:
   git diff "$BASE"...HEAD
   ```
   If it prints `UNKNOWN` (exit 1), ask the user which branch to diff against instead of guessing.
+- Note the command you settled on, **with the base resolved to a real revision** — it goes into
+  `scope` in step 3, and is what lets the diff be taken again later without regenerating anything.
+  When the scope includes uncommitted work, diff against the merge base so one command covers both:
+  `git diff $(git merge-base "$BASE" HEAD)`.
 - Save:
   - `diff.patch`: the full diff (`git diff ... > diff.patch`)
   - stats: `git diff --shortstat` and `grep -c '^@@' diff.patch` (files / hunks / +N −N)
@@ -191,7 +200,10 @@ Read your own prose top to bottom and fix whatever fails:
 ## 3–4. Generate and launch the UI
 
 1. Write `$REVIEW_DIR/review-data.json` following schema.md.
-   Order groups by importance (high → medium → low). Set `repoRoot` to the target repo's absolute path.
+   Order groups by importance (high → medium → low). Set `repoRoot` to the target repo's absolute path,
+   and `scope` to the diff command from step 1 (`{"cmd": "git diff 4f2a1c9...HEAD", "cwd": "<repo root>"}`).
+   Without `scope` the diff can never be taken again, and the whole review has to be regenerated to
+   see a one-line fix — so write it every time.
    Also write `$REVIEW_DIR/meta.json` for the list view (`/kaisetu-list` reads it instead of opening
    the full diff; it contains only title / tagline / repoRoot / generatedAt — see schema.md).
 2. Start the server as a long-running process (the browser opens automatically).
@@ -203,19 +215,19 @@ Read your own prose top to bottom and fix whatever fails:
    In Claude Code use the Bash tool with `run_in_background: true`; in Codex run `exec_command` with a
    short yield time and keep the returned session ID. The URL, result path, and pid are printed on startup.
    If the browser cannot auto-open in your environment, pass `--no-open` and give the printed URL to the user.
-   **The server keeps running after "Finish review"** (the user can keep looking at the page).
+   **The server keeps running after "Finish"** (the user can keep looking at the page).
 3. Detect completion asynchronously.
    In Claude Code, run a separate background command that waits for the result file:
    ```bash
    until [ -f $REVIEW_DIR/review-data.result.json ]; do sleep 2; done
    ```
-   (`run_in_background: true`. When the user presses "Finish review", the result JSON is written,
+   (`run_in_background: true`. When the user presses "Finish", the result JSON is written,
    this command exits, and you get a task notification.)
    In Codex, poll the server session with an empty `write_stdin`, or check for the result file on the
    next user turn. Never block on sleep or wait for long periods when no result exists.
-4. Tell the user: "The review page is open. When you're done, press 'Finish review' on the page." Then wait.
+4. Tell the user: "The review page is open. When you're done, press 'Finish' on the page." Then wait.
 
-## 5–6. Ingest results and respond
+## 5–7. Ingest results, respond, and re-take the diff
 
 Comments are **threads** (human comment → AI answer → human reply → …).
 
@@ -231,14 +243,29 @@ Comments are **threads** (human comment → AI answer → human reply → …).
      The server re-reads the file, so **the page swaps in the new explanation within seconds**
      (comments are preserved). See the table "Comments on explanations" in schema.md for which field
      to rewrite. If it's about the code itself, fix or answer as usual.
-     Never change `groups[].id` / `sections[].id` / the `hunks` structure (comment anchors would shift).
+     Never change `groups[].id` / `sections[].id` / a hunk's `id` or `diff` — comments hang off a hunk
+     ID and a line number, so editing either by hand moves someone's comment onto a different line.
+     Moving a whole hunk entry to another section is safe: its ID and its body travel with it.
 3. **Write your answers to `$REVIEW_DIR/review-data.replies.json`** (format in schema.md).
    The page polls it every few seconds and shows each answer in its thread as an "AI" message.
    If you fixed code, also write an answer like "Fixed: …".
    **If the file already exists, load it and append to the `replies` arrays** (removing past answers
    removes them from the page).
-4. **Leave the server running.** The user reads your answers, continues threads via "Reply", and
-   presses "Finish review" again (the result JSON is overwritten).
+4. **When you changed code, re-take the diff** so the page stops showing the version you just fixed:
+   ```bash
+   python3 $SKILL_DIR/scripts/refresh.py $REVIEW_DIR/review-data.json
+   ```
+   The groups, the explanations and the comment threads all stay as they are; only the hunk bodies
+   catch up with the working tree, every hunk that moved is badged "updated", and the page reloads
+   within seconds. **Never re-run this skill to show a fix** — that throws away the reading guide and
+   the review the human is in the middle of. (The human can press "Refresh" in the header to do
+   the same thing whenever they have edited something themselves.)
+   Read what it reports. If it found new hunks, they are sitting in a group at the top called
+   "Changes made since the review": move each into the section it belongs to and give that section's
+   `explain` whatever it now needs, leaving the rest of the review untouched. The group disappears
+   once it is empty.
+5. **Leave the server running.** The user reads your answers, continues threads via "Reply", and
+   presses "Finish" again (the result JSON is overwritten).
    Delete the result file and re-run the wait command from step 3–4.3 to detect the next round the same way.
    When the review exchange is fully done, clean up with `kill <pid>` using the pid printed at startup.
 
@@ -281,16 +308,18 @@ document and comments on the parts that need changing; you fix the source file.
      seconds and the comments stay anchored.
    - Answer in `$REVIEW_DIR/review-data.replies.json` under `elementComments`
      (`key` = the result's `key`; see schema.md).
-5. Threads, "Reply", resolve, and "Finish review" behave exactly as in diff review (steps 5–6).
+5. Threads, "Reply", resolve, and "Finish" behave exactly as in diff review (steps 5–6).
 
 ## Notes
 
 - **If the user asks in chat to rewrite the overview etc., handle it the same way**: rewrite the field in
   `$REVIEW_DIR/review-data.json` and the page rebuilds within seconds (no need to wait for
-  "Finish review", no server restart).
+  "Finish", no server restart).
+- The same goes for code: after any edit to the target repo — answering a comment, or work the user
+  asked for in chat — run `scripts/refresh.py` so the open page shows what the code says now.
 - Static HTML only (e.g. to share with another session): `serve.py <data.json> --build out.html`
 - The page's "Copy summary" button is for **pasting comments into another session** (e.g. Codex).
-  Within this session, use "Finish review".
+  Within this session, use "Finish".
 - Work-in-progress state (comments, resolved flags) is auto-saved to `review-data.state.json`; reopening
   the page restores from the newer of localStorage and state.json (works across browsers via state.json).
 - When restarting the server on the same `$REVIEW_DIR`, delete any old `*.result.json` first

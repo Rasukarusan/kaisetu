@@ -34,6 +34,10 @@ the same calm I bring to a teammate's PR. I've stopped reading diffs top to bott
 - Squinting at a hunk thinking "so what is this trying to do?" → **there's a one-line explanation**
 - Piling up "I'll ask about this later" notes → **ask the AI right there**
 
+Once you've commented and the AI has fixed the code, press "Refresh" in the header. The groups,
+the explanations and the comment threads all stay; only the code catches up with the working tree,
+and every hunk that moved is badged "updated". There is no second review to sit through.
+
 
 ## Install as a skill
 
