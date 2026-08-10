@@ -10,7 +10,13 @@
     "files": 23,
     "hunks": 30,
     "additions": 817,
-    "deletions": 3
+    "deletions": 3,
+    "breakdown": [
+      { "kind": "code", "label": "Implementation", "files": 19, "additions": 682 },
+      { "kind": "test", "label": "Tests", "files": 2, "additions": 111 },
+      { "kind": "migration", "label": "Data model (Prisma schema)", "files": 2, "additions": 24 }
+    ],
+    "core": "The core is the domain model and its 4 use cases — 6 files, 139 lines"
   },
   "groups": [
     {

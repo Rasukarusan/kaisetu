@@ -10,7 +10,13 @@
     "files": 23,
     "hunks": 30,
     "additions": 817,
-    "deletions": 3
+    "deletions": 3,
+    "breakdown": [
+      { "kind": "code", "label": "実装コード", "files": 19, "additions": 682 },
+      { "kind": "test", "label": "テスト", "files": 2, "additions": 111 },
+      { "kind": "migration", "label": "データモデル (Prisma schema)", "files": 2, "additions": 24 }
+    ],
+    "core": "芯はドメインモデルと4つのユースケース、6 ファイル 139 行"
   },
   "groups": [
     {
