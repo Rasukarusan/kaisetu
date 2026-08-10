@@ -502,6 +502,13 @@ main { max-width: 1060px; margin: 0 auto; padding: 28px 24px 64px; }
 .hunk-head:hover .copy-path, .ft-file:hover .copy-path { opacity: 1; }
 .copy-path:hover { color: var(--blue); border-color: var(--blue); }
 .hunk-head .range { color: var(--ink-faint); }
+/* What moved since the diff was last taken, so a re-read goes straight to the fixes */
+.hunk-head .upd {
+  margin-left: auto; flex: none; font-size: 10.5px; font-weight: 700; letter-spacing: .03em;
+  padding: 2px 8px; border-radius: 999px; background: var(--blue); color: #fff;
+}
+.hunk-head .upd.gone { background: var(--surface-3); color: var(--ink-faint); border: 1px solid var(--border-strong); }
+.hunk.gone table.diff { opacity: .45; }
 table.diff { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12.5px; line-height: 1.75; }
 table.diff td { padding: 0; vertical-align: top; }
 td.ln {
@@ -608,6 +615,15 @@ td.wide { padding: 6px 14px 6px 4.8em; }
 .comment-view .cv-head {
   display: flex; align-items: center; gap: 8px;
   padding: 5px 6px 5px 10px; background: var(--comment-head-bg); border-bottom: 1px solid var(--comment-head-border);
+}
+/* The thread's line was taken out of the diff by a refresh — say what it was written on */
+.comment-view .cv-detached {
+  padding: 6px 10px; font-size: 12px; color: var(--ink-soft);
+  border-bottom: 1px solid var(--comment-head-border);
+}
+.comment-view .cv-detached code {
+  font-family: var(--mono); font-size: 11.5px; color: var(--ink);
+  background: var(--surface-3); border-radius: 4px; padding: 1px 6px; word-break: break-all;
 }
 .comment-view .label {
   font-family: var(--mono); font-size: 11px; font-weight: 700; padding: 2px 9px;
@@ -885,8 +901,10 @@ function savePrefs(update) {
   <label class="opt diff-only" title="Hide hunks in test files"><input type="checkbox" id="hide-tests" checked> Hide tests</label>
   <label class="opt doc-only" title="Show a + next to the row under the cursor (turn off to use the document normally)"><input type="checkbox" id="pick-mode" checked> Comment mode</label>
   <button class="comment-count" id="comment-count" title="Open the comment list"></button>
+  <button class="abtn diff-only" id="refresh-btn" hidden
+    title="Take the diff again — the explanations and your comments stay">Refresh</button>
   <button class="abtn" id="copy-btn">Copy summary</button>
-  <button class="abtn finish" id="finish-btn" hidden title="Send the results back to the agent session">Finish review</button>
+  <button class="abtn finish" id="finish-btn" hidden title="Send the results back to the agent session">Finish</button>
   <button class="help-btn" id="theme-btn" title="Toggle dark mode"></button>
   <button class="help-btn" id="help-btn" title="Help">?</button>
 </header>
@@ -945,6 +963,7 @@ function savePrefs(update) {
       <tr class="diff-only"><td class="key">click</td><td>Hover a diff line, the overview, an intent, or an AI note — press the + to comment</td></tr>
       <tr class="diff-only"><td class="key">copy</td><td>The button next to a file name copies its path</td></tr>
       <tr class="diff-only"><td class="key">j / k</td><td>Jump to the next / previous group</td></tr>
+      <tr class="diff-only"><td class="key">Refresh</td><td>Take the diff again once the code has been fixed — the groups, the explanations and your comments all stay, and every hunk that moved is badged "updated"</td></tr>
       <tr class="diff-only"><td class="key">Split</td><td>Side-by-side (old left, new right) or unified — drag the boundary between the sides to resize it, double-click to reset. The choice is remembered</td></tr>
       <tr class="doc-only"><td class="key">+</td><td>Hover a paragraph, a heading, a list item or a table row — press the + in its gutter to comment</td></tr>
       <tr class="doc-only"><td class="key">pin</td><td>Once commented on, a row keeps a numbered pin in place of the +; click a pin or a comment to jump between them</td></tr>
@@ -958,9 +977,9 @@ function savePrefs(update) {
     you pressed the + on. When the AI fixes the file, this page reloads with the new render within
     seconds and your comments stay put (a row that no longer exists is marked "anchor lost").</p>
     <p style="font-size:13px;color:var(--ink-soft)">Comments are saved automatically.
-    "Finish review" sends the results back to the agent session; the page stays usable after sending.
+    "Finish" sends the results back to the agent session; the page stays usable after sending.
     When a comment receives an AI answer, use "Reply" to continue the thread, then press
-    "Finish review" again to send it back. When the AI rewrites the overview or an explanation in
+    "Finish" again to send it back. When the AI rewrites the overview or an explanation in
     response to your comment, this page swaps in the new content automatically (your comments are kept).
     To hand the results to another session (e.g. Codex), use "Copy summary".</p>
     <div class="close-row"><button class="mini-btn" onclick="document.getElementById('help-overlay').classList.remove('show')">Close</button></div>
@@ -1018,7 +1037,7 @@ const JA = {
   "✓ Resolve": "✓ 解決", "↺ Reopen": "↺ 戻す", "Reopen": "戻す", "Delete": "削除",
   "awaiting": "未回答", "resolved": "解決済み", "replies": "返信", "answers": "回答",
   "No comments yet": "まだコメントはありません",
-  "Awaiting AI reply — press “Finish review” to send": "AIの回答待ち — 「レビューを終える」で送信",
+  "Awaiting AI reply — press “Finish” to send": "AIの回答待ち — 「Finish」で送信",
   "Copy path": "パスをコピー", "copy": "コピー", "none": "なし",
   "Comment on this group (its intent, the design, …)":
     "このグループについてコメントする（意図の書き方・設計など）",
@@ -1033,6 +1052,9 @@ const JA = {
   "Resent the updated results": "更新した結果を送り直しました",
   "Failed to send (is the server stopped?)": "送信できませんでした（サーバが止まっていませんか）",
   "Applied the rewritten explanations": "書き直された解説を反映しました",
+  "updated": "更新", "no longer in the diff": "差分から消えました",
+  "Refresh failed": "Refresh できませんでした",
+  "Written on a line the diff no longer has": "この指摘を書いた行は差分から無くなりました",
   "Nothing to copy": "コピーするものがありません",
   "Copied the summary": "まとめをコピーしました",
   "Copy failed": "コピーできませんでした",
@@ -1050,14 +1072,14 @@ function fingerprint(s) {
   for (let i = 0; i < s.length; i++) h = (h * 33) ^ s.charCodeAt(i);
   return (h >>> 0).toString(36);
 }
-// The localStorage key is derived from the diff structure (hunk IDs and bodies).
-// Rewriting explanations does not move comment anchors, so the key stays stable too.
+// The localStorage key is derived from the hunk IDs, which are what comments hang off. Rewriting
+// explanations and re-taking the diff both leave those alone, so the key survives either.
 // In document mode it comes from the reviewed file's path, so comments survive the file being fixed.
 const LS_KEY = "kaisetu:" + fingerprint(DOC_MODE
   ? "doc:" + (DATA.doc || DATA.title || "")
   : JSON.stringify((DATA.groups || []).map(
       g => [g.id, (g.sections || (g.hunks ? [{ hunks: g.hunks }] : []))
-        .map(s => (s.hunks || []).map(h => [h.id, h.diff]))])));
+        .map(s => (s.hunks || []).map(h => h.id))])));
 // comments[key] / groupComments[gid] / docComments[target] / elComments[selector] = human message
 // threads (string arrays, oldest first).
 // AI answers live in `replies` at the same index (replies[key][i] answers the i-th human message).
@@ -1066,6 +1088,7 @@ let state = {
   resolved: {}, groupResolved: {}, docResolved: {}, elResolved: {},
   elAnchors: {},   // document mode: key → {sel, tag, text, label} (how to find the element again)
   commentSides: {},   // split view: key → "left" | "right" for a context line, commented on either side
+  detached: {},    // key → the line the thread was written on, after a refresh removed that line
 };
 let replies = { comments: {}, groupComments: {}, docComments: {}, elComments: {} }; // AI answers (polled from /api/replies)
 // Restore from the newer of localStorage and the server-embedded state.json (compared via _savedAt)
@@ -1073,12 +1096,16 @@ let replies = { comments: {}, groupComments: {}, docComments: {}, elComments: {}
   let localState = null, serverState = null;
   try { localState = JSON.parse(localStorage.getItem(LS_KEY) || "null"); } catch (e) {}
   try { serverState = JSON.parse(document.getElementById("review-state").textContent); } catch (e) {}
-  const pick = (serverState?._savedAt || 0) > (localState?._savedAt || 0)
-    ? serverState : (localState || serverState);
+  // _rev decides first: a refresh moves comment anchors on the server, and the browser's copy still
+  // holds the old positions however recently it was saved. Same revision → the later save wins.
+  const newer = (serverState?._rev || 0) !== (localState?._rev || 0)
+    ? (serverState?._rev || 0) > (localState?._rev || 0)
+    : (serverState?._savedAt || 0) > (localState?._savedAt || 0);
+  const pick = newer ? serverState : (localState || serverState);
   if (pick) state = Object.assign(state, pick);
   for (const k of ["comments", "groupComments", "docComments", "elComments",
                    "resolved", "groupResolved", "docResolved", "elResolved", "elAnchors",
-                   "commentSides"])
+                   "commentSides", "detached"])
     state[k] ??= {};
   for (const store of [state.comments, state.groupComments, state.docComments, state.elComments])
     for (const [k, v] of Object.entries(store)) {
@@ -1096,7 +1123,12 @@ function saveState() {
   if (SERVER) {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
-      fetch("/api/state", { method: "POST", body: JSON.stringify(state) }).catch(() => {});
+      fetch("/api/state", { method: "POST", body: JSON.stringify(state) })
+        .then(r => r.json())
+        // The server kept a newer revision: a refresh moved the anchors while this page was still
+        // showing the old ones. Reload now rather than sit on positions that no longer hold.
+        .then(r => { if (r && r.stale) applyDataUpdate(); })
+        .catch(() => {});
     }, 400);
   }
   refreshCounters();
@@ -1283,7 +1315,8 @@ if (SERVER) {
 
 /* Rebuild the page when review-data.json (the explanations) is rewritten.
    Comments are restored from the server's state.json and localStorage, so nothing is lost. */
-const SS_SCROLL = "kaisetu:scroll", SS_UPDATED = "kaisetu:updated", SS_FRAME = "kaisetu:frameScroll";
+const SS_SCROLL = "kaisetu:scroll", SS_UPDATED = "kaisetu:updated", SS_FRAME = "kaisetu:frameScroll",
+      SS_REFRESHED = "kaisetu:refreshed";
 function applyDataUpdate() {
   sessionStorage.setItem(SS_SCROLL, String(window.scrollY));
   sessionStorage.setItem(SS_UPDATED, "1");
@@ -1307,6 +1340,26 @@ if (SERVER) {
       applyDataUpdate();
     } catch (e) {}
   }, 3000);
+}
+
+/* Take the diff again after the code was fixed. The groups, the explanations and the comment
+   threads all stay; only the hunk bodies catch up with the working tree, and what moved is
+   badged "updated". Needs `scope` in the review data — that is what says how to take the diff. */
+if (SERVER && !DOC_MODE && DATA.scope) {
+  const btn = document.getElementById("refresh-btn");
+  btn.hidden = false;
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    try {
+      const r = await (await fetch("/api/refresh", { method: "POST" })).json();
+      if (!r.ok) throw new Error(r.error || "");
+      sessionStorage.setItem(SS_REFRESHED, JSON.stringify(r));
+      applyDataUpdate();
+    } catch (e) {
+      toast(L("Refresh failed") + (e.message ? ": " + e.message : ""));
+      btn.disabled = false;
+    }
+  });
 }
 
 const indexEl = document.getElementById("index");
@@ -1435,14 +1488,17 @@ function renderGroups() {
     }
 
     const sec = document.createElement("section");
-    sec.className = "hunk" + (isTestFile(h.file) ? " is-test" : "");
+    sec.className = "hunk" + (isTestFile(h.file) ? " is-test" : "") + (h.gone ? " gone" : "");
     sec.id = "hunk-" + h.id;
     const hh = document.createElement("div");
     hh.className = "hunk-head";
     hh.title = "Click to collapse";
+    /* Set by the last refresh: this hunk moved, or the change it showed is no longer in the diff */
+    const mark = h.gone ? `<span class="upd gone">${L("no longer in the diff")}</span>`
+      : h.updated ? `<span class="upd">${L("updated")}</span>` : "";
     hh.innerHTML = `<span class="caret">▼</span><span class="hid">${esc(h.id)}</span><span class="file">${esc(h.file)}</span>
       <button class="copy-path" data-copy="${esc(h.file)}" title="${L('Copy path')}">${L("copy")}</button>
-      <span class="range">${esc((parsed.header || "").replace(/^@@ | @@.*$/g, m2 => m2 === "@@ " ? "" : ""))}</span>`;
+      <span class="range">${esc((parsed.header || "").replace(/^@@ | @@.*$/g, m2 => m2 === "@@ " ? "" : ""))}</span>${mark}`;
     hh.addEventListener("click", e => {
       if (e.target.closest("button")) return;
       sec.classList.toggle("collapsed");
@@ -1543,6 +1599,12 @@ function renderGroups() {
         trailingRows([i]);
       });
     }
+    /* A hunk can come back from a refresh with fewer lines than it had comments. Those threads
+       collect under the diff instead of being counted in the header but drawn nowhere. */
+    for (const key of Object.keys(state.comments)
+        .filter(k => k.startsWith(h.id + ":") && +k.slice(h.id.length + 1) >= parsed.rows.length)
+        .sort((a, b) => +a.split(":").pop() - +b.split(":").pop()))
+      tbody.appendChild(slotRow(key, null));
     table.appendChild(tbody);
     sec.appendChild(table);
     art.appendChild(sec);
@@ -1574,6 +1636,10 @@ function commentMeta(key) {
   for (const s of g.sections || (g.hunks ? [{ hunks: g.hunks }] : []))
   for (const h of s.hunks || []) {
     if (h.id !== hid) continue;
+    // A thread whose line a refresh removed keeps the line it was written on as its subject, so
+    // the summary handed back to the agent still says what the comment was about
+    const gone = state.detached[key];
+    if (gone) return { file: h.file, line: "", code: gone };
     const r = parseHunk(h.diff || "").rows[idx];
     const line = r ? (r.new != null ? "L" + r.new : "old L" + r.old) : "";
     return { file: h.file, line, code: r ? r.raw : "" };
@@ -1681,13 +1747,18 @@ function renderThread(key, kind, editAt = null) {
   }
   const foot = editAt != null ? "" : `<div class="cv-foot">
     <button class="mini-btn" data-act="reply" ${attrs} data-idx="${msgs.length}">${L("Reply")}</button>
-    ${isAwaiting(key, kind) ? `<span class="pending">${L("Awaiting AI reply — press “Finish review” to send")}</span>` : ""}</div>`;
+    ${isAwaiting(key, kind) ? `<span class="pending">${L("Awaiting AI reply — press “Finish” to send")}</span>` : ""}</div>`;
   const headLabel = kind === "group" ? L("Group comment") : L("Comment");
+  /* Set by a refresh: the line this thread was written on was taken out of the diff. Saying so is
+     the only honest option — the thread now sits next to a line it was never about. */
+  const wasOn = kind === "line" ? state.detached[key] : null;
   host.innerHTML = `<div class="comment-view">
     <div class="cv-head"><span class="label">${headLabel}</span>
       <span class="spacer"></span>
       <button class="link-btn" data-act="${done ? "unresolve" : "resolve"}" ${attrs}>${done ? L("↺ Reopen") : L("✓ Resolve")}</button>
       <button class="link-btn danger" data-act="del" ${attrs}>${L("Delete")}</button></div>
+    ${wasOn ? `<div class="cv-detached">${L("Written on a line the diff no longer has")}:
+      <code>${esc(wasOn)}</code></div>` : ""}
     ${body}${foot}</div>`;
   host.querySelector("textarea")?.focus();
 }
@@ -1872,7 +1943,7 @@ async function finishReview() {
       : "Results sent back to the session. The page stays usable"));
     sent = true;
     btn.classList.add("sent");
-    btn.textContent = "Finish review (resend)";
+    btn.textContent = "Finish (resend)";
   } catch (e) {
     toast(L("Failed to send (is the server stopped?)"));
   } finally {
@@ -2420,8 +2491,9 @@ function localizeChrome() {
   opt("split-mode", "左右に分割", "差分を左右に並べる（左が変更前・右が変更後）");
   opt("hide-tests", "テストを隠す", "テストファイルの hunk を隠す");
   opt("pick-mode", "コメントモード", "行の左に + を出してコメントする（切ると普通に操作できる）");
+  // The button keeps its English name in both languages — it is what the reader already calls this
+  ttl("#refresh-btn", "いまのコードで差分を取り直す（解説とコメントはそのまま残ります）");
   txt("#copy-btn", "まとめをコピー");
-  txt("#finish-btn", "レビューを終える");
   ttl("#finish-btn", "結果をエージェントのセッションに送り返す");
   ttl("#comment-count", "コメント一覧を開く");
   ttl("#theme-btn", "ダークモードの切替");
@@ -2452,6 +2524,7 @@ function localizeChrome() {
       <tr class="doc-only"><td class="key">ピン</td><td>コメントした行は + が番号付きのピンに変わる。ピンとコメントは相互に行き来できる</td></tr>
       <tr class="doc-only"><td class="key">p</td><td>コメントモードの切替（切るとドキュメントのリンクやボタンを普通に押せる）</td></tr>
       <tr class="doc-only"><td class="key">コメント</td><td>ヘッダーのカウンタでコメント欄を出し入れする</td></tr>
+      <tr class="diff-only"><td class="key">Refresh</td><td>コードを直したあとに差分を取り直す。グループ・解説・コメントはそのまま残り、動いた hunk には「更新」が付く</td></tr>
       <tr><td class="key">c</td><td>まとめをコピー</td></tr>
       <tr><td class="key">⌘Enter</td><td>コメント編集中に保存</td></tr>
       <tr><td class="key">Esc</td><td>コメント編集の取消 / コメント一覧を閉じる</td></tr>
@@ -2460,8 +2533,8 @@ function localizeChrome() {
     AIがファイルを直すと、このページは数秒で新しい表示に入れ替わり、コメントはその行に付いたまま残ります
     （その行そのものが無くなった場合は「参照先なし」と表示されます）。</p>
     <p style="font-size:13px;color:var(--ink-soft)">コメントは自動で保存されます。
-    「レビューを終える」で結果がエージェントのセッションに送られます（送ったあともページはそのまま使えます）。
-    回答が付いたら「返信」でスレッドを続け、もう一度「レビューを終える」を押すと送り返されます。
+    「Finish」で結果がエージェントのセッションに送られます（送ったあともページはそのまま使えます）。
+    回答が付いたら「返信」でスレッドを続け、もう一度「Finish」を押すと送り返されます。
     指摘を受けてAIが概要や解説を書き直すと、このページは自動で新しい内容に入れ替わります（コメントは残ります）。
     別のセッション（Codex など）に渡すときは「まとめをコピー」を使ってください。</p>
     <div class="close-row"><button class="mini-btn"
@@ -2474,8 +2547,18 @@ refreshCounters();
 {
   const y = sessionStorage.getItem(SS_SCROLL);
   if (y != null) { sessionStorage.removeItem(SS_SCROLL); window.scrollTo(0, +y); }
-  if (sessionStorage.getItem(SS_UPDATED)) {
-    sessionStorage.removeItem(SS_UPDATED);
+  const refreshed = sessionStorage.getItem(SS_REFRESHED);
+  const rewritten = sessionStorage.getItem(SS_UPDATED);
+  sessionStorage.removeItem(SS_REFRESHED);
+  sessionStorage.removeItem(SS_UPDATED);
+  if (refreshed) {
+    // Say what the refresh actually moved, so the reader knows where to look
+    let r = {};
+    try { r = JSON.parse(refreshed); } catch (e) {}
+    toast(LANG === "ja"
+      ? `Refresh しました — 更新 ${r.updated || 0} / 新規 ${r.added || 0} / 消えた ${r.gone || 0}`
+      : `Refreshed — ${r.updated || 0} updated / ${r.added || 0} new / ${r.gone || 0} gone`);
+  } else if (rewritten) {
     toast(L("Applied the rewritten explanations"));
   }
 }
