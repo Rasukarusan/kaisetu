@@ -31,6 +31,7 @@ There are two modes, decided by what is being reviewed:
 ## Overall flow
 
 ```
+0. Already reviewed on this branch? → ask: reopen it, or start a new one
 1. Collect diff → 2. Group + explain → 3. Generate review-data.json → 4. Start serve.py (browser opens)
 → 5. Human comments on screen (diff lines, groups, overview, AI explanations) → "Finish"
 → 6. Read the result JSON and respond (fix code / answer / rewrite explanations)
@@ -41,6 +42,44 @@ There are two modes, decided by what is being reviewed:
 Steps 1–2 are the expensive half and they stay true after the code is fixed, so **the skill is run
 once per review**. Everything after that — new answers, rewritten explanations, fixed code — updates
 the page that is already open.
+
+## 0. Look for a review of this branch
+
+A review is built for a branch and stays true for as long as that branch is being worked on, so
+running the skill again on the same branch is usually a request to go back to it. Before collecting
+anything, look:
+
+```bash
+python3 $SKILL_DIR/scripts/find_review.py            # run with the target repo as CWD
+python3 $SKILL_DIR/scripts/find_review.py --doc docs/spec.md   # document review mode
+```
+
+It prints one line per past review of this repository and branch — `<dir>` / `<generatedAt>` /
+`open|finished` / `<title>` — newest first, and nothing when there is none. Diff reviews and
+document reviews never match each other.
+
+- **Nothing printed** → go to step 1 and build the review.
+- **One or more printed** → **ask the user which they want** (AskUserQuestion), naming each
+  candidate by its title and time:
+  - **Reopen it** — the grouping, the explanations and the comment threads are all still there, and
+    the diff is re-taken so the page shows the code as it stands now.
+  - **Start a new review** — a fresh `$REVIEW_DIR`; the old one stays and is still reachable from
+    `/kaisetu-list`.
+
+  Never pick for the user. Rebuilding silently throws away a reading guide and every comment on it;
+  reopening silently ignores a scope they may have meant to change. When the user named a scope the
+  existing review does not cover (a different commit or range), say so in the option text.
+
+To reopen, **skip steps 1–2 entirely**:
+
+1. Delete any `review-data.result.json` in that directory (otherwise completion detection fires
+   immediately; on-screen comments live in `review-data.state.json`, so nothing is lost).
+2. Re-take the diff so the page shows the current code:
+   `python3 $SKILL_DIR/scripts/refresh.py <dir>/review-data.json`
+   Read what it reports and place any new hunks as described in step 7 — including emptying the
+   "Changes made since the review" group. A review written without `scope` cannot be re-taken; it
+   can only be read as the snapshot it is.
+3. Start the server and set up completion detection as in steps 3–4, then continue from step 5.
 
 ## 1. Collect the diff
 
@@ -204,8 +243,11 @@ Read your own prose top to bottom and fix whatever fails:
    and `scope` to the diff command from step 1 (`{"cmd": "git diff 4f2a1c9...HEAD", "cwd": "<repo root>"}`).
    Without `scope` the diff can never be taken again, and the whole review has to be regenerated to
    see a one-line fix — so write it every time.
+   Set `branch` to the branch the diff was taken on (`git rev-parse --abbrev-ref HEAD`).
    Also write `$REVIEW_DIR/meta.json` for the list view (`/kaisetu-list` reads it instead of opening
-   the full diff; it contains only title / tagline / repoRoot / generatedAt — see schema.md).
+   the full diff; it contains only title / tagline / branch / repoRoot / generatedAt — see schema.md).
+   **`branch` is what step 0 matches on**, so a review written without it can never be found again
+   from the branch it belongs to.
 2. Start the server as a long-running process (the browser opens automatically).
    **Run it with the target repo root as CWD** (the page's plan link serves the plan file via `/plan`,
    so the relative `plan` path must resolve from CWD):
@@ -279,11 +321,16 @@ doc written in Markdown.
 **Skip steps 1–2 entirely: no diff, no grouping, no explanations.** The human reads the rendered
 document and comments on the parts that need changing; you fix the source file.
 
+Step 0 still applies, with the reviewed file passed along
+(`python3 $SKILL_DIR/scripts/find_review.py --doc docs/release-notes.md`): a document reviewed once
+already on this branch is reopened rather than filed again.
+
 1. Create `$REVIEW_DIR` as in step 1 and write `review-data.json` with just these fields:
    ```json
    {
      "title": "Review of the release notes",
      "doc": "docs/release-notes.md",
+     "branch": "release-notes",
      "generatedAt": "2026-08-05 10:00",
      "repoRoot": "/Users/me/repos/myapp"
    }
@@ -291,7 +338,8 @@ document and comments on the parts that need changing; you fix the source file.
    `doc` is the reviewed file, absolute or relative to the server CWD (= the target repo root).
    `.md` is rendered to HTML by the server; `.html` is shown as it is.
    Add nothing else — no `groups`, `overview`, `stats`, or explanations.
-   Write `meta.json` as usual so `/kaisetu-list` can reopen it.
+   Write `meta.json` as usual, `doc` and `branch` included, so `/kaisetu-list` can reopen it and
+   step 0 can find it.
 2. Start the server and set up completion detection exactly as in steps 3–4.
    The page renders the document in an iframe; files next to it (images, CSS, JS, other `.md`) are
    served too, so relative links work.
