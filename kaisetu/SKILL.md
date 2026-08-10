@@ -260,10 +260,13 @@ Comments are **threads** (human comment → AI answer → human reply → …).
    within seconds. **Never re-run this skill to show a fix** — that throws away the reading guide and
    the review the human is in the middle of. (The human can press "Refresh" in the header to do
    the same thing whenever they have edited something themselves.)
-   Read what it reports. If it found new hunks, they are sitting in a group at the top called
-   "Changes made since the review": move each into the section it belongs to and give that section's
-   `explain` whatever it now needs, leaving the rest of the review untouched. The group disappears
-   once it is empty.
+   Read what it reports. New hunks mostly place themselves, next to the file or the directory they
+   belong with; check that the section they landed in still reads true and extend its `explain` if
+   the change added something the story does not cover. Anything with no neighbour on the page —
+   a new app, a new top-level file — is waiting in a group at the top called "Changes made since the
+   review". **Never leave that group standing**: move each hunk into the section it belongs to and
+   write what the reader needs, leaving the rest of the review untouched. The group disappears once
+   it is empty. A hunk keeps its ID and body when it moves, so comments stay anchored.
 5. **Leave the server running.** The user reads your answers, continues threads via "Reply", and
    presses "Finish" again (the result JSON is overwritten).
    Delete the result file and re-run the wait command from step 3–4.3 to detect the next round the same way.
