@@ -2305,8 +2305,23 @@ function layoutAddBtn() {
 }
 
 function setHoverRow(el) {
+  keepHover();
   hoverRow = el;
   layoutAddBtn();
+}
+
+/* The + is drawn on the overlay above the iframe, so reaching for it means leaving the document and
+   the row underneath it. Clearing the row there would take the + away from under the cursor — the
+   one thing the reader was aiming at. So a departure is only acted on if nothing catches it: the +
+   cancels it the moment the pointer arrives. */
+let leaveTimer = null;
+function keepHover() {
+  clearTimeout(leaveTimer);
+  leaveTimer = null;
+}
+function leaveRow() {
+  clearTimeout(leaveTimer);
+  leaveTimer = setTimeout(() => setHoverRow(null), 160);
 }
 
 /* A Markdown document is rendered by us, so it follows this page's light / dark setting.
@@ -2514,8 +2529,11 @@ function initDocMode(src, inline) {
   const addBtn = document.getElementById("addbtn");
   addBtn.addEventListener("click", () => { if (hoverRow) startElComment(hoverRow); });
   // Pressing the + is a deliberate act, so outlining its row here can never flicker
-  addBtn.addEventListener("mouseenter", () => { if (hoverRow) showHl(hoverRow, describe(hoverRow)); });
-  addBtn.addEventListener("mouseleave", hideHl);
+  addBtn.addEventListener("mouseenter", () => {
+    keepHover();   // reaching the + means leaving the document: that must not take the + away
+    if (hoverRow) showHl(hoverRow, describe(hoverRow));
+  });
+  addBtn.addEventListener("mouseleave", () => { hideHl(); leaveRow(); });
 
   frame.addEventListener("load", () => {
     const doc = frameDoc();
@@ -2529,11 +2547,13 @@ function initDocMode(src, inline) {
     }, true);
     doc.addEventListener("mousemove", e => {
       if (!pickMode()) return;
+      keepHover();
       const row = rowOf(e.target);
       // Between two rows there is no row at all: keep the + where it is rather than blinking it out
       if (row && row !== hoverRow) setHoverRow(row);
     }, { passive: true, capture: true });
-    doc.addEventListener("mouseout", e => { if (!e.relatedTarget) setHoverRow(null); }, true);
+    // The pointer left the document — possibly on its way to the + drawn above it
+    doc.addEventListener("mouseout", e => { if (!e.relatedTarget) leaveRow(); }, true);
     frame.contentWindow.addEventListener("scroll", () => {
       if (scrollRaf) return;
       scrollRaf = requestAnimationFrame(() => { scrollRaf = 0; hideHl(); layoutPins(); layoutAddBtn(); });

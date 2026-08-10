@@ -61,6 +61,7 @@ kaisetu を作ったのは、このセルフレビューをやりやすくする
 git clone https://github.com/Rasukarusan/kaisetu.git
 ln -s "$(pwd)/kaisetu/kaisetu" ~/.claude/skills/kaisetu
 ln -s "$(pwd)/kaisetu/kaisetu-list" ~/.claude/skills/kaisetu-list
+ln -s "$(pwd)/kaisetu/kaisetu-html" ~/.claude/skills/kaisetu-html
 ```
 
 Claude Code を再起動して:
@@ -73,6 +74,7 @@ Claude Code を再起動して:
 /kaisetu HEAD~3..HEAD       # 例: 直近3コミット
 /kaisetu docs/report.html   # レンダリングされたページ自体をレビュー
 /kaisetu docs/design.md     # Markdown のドキュメントも同じようにレビュー
+/kaisetu-html               # 差分レビュー抜きで、解説HTMLだけを作る
 /kaisetu-list               # 過去のレビューを一覧・再開
 ```
 
