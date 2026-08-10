@@ -941,7 +941,7 @@ if (DOC_MODE) document.body.classList.add("mode-doc");
 const LANG = DATA.lang || (/[\u3040-\u30ff\u4e00-\u9fff]/.test(
   `${DATA.title || ""}${DATA.tagline || ""}${DATA.overview || ""}`) ? "ja" : "en");
 const JA = {
-  "Note": "メモ", "Question": "疑問", "AI note": "解説",
+  "Note": "メモ", "Question": "疑問", "AI note": "解説", "Intent:": "意図:",
   "High": "高", "Medium": "中", "Low": "低", "hunks": "hunk",
   "Comment": "コメント", "Group comment": "グループへのコメント", "Group": "グループ",
   "COMMENT — on this line": "コメント — この行について",
@@ -957,6 +957,11 @@ const JA = {
   "No comments yet": "まだコメントはありません",
   "Awaiting AI reply — press “Finish review” to send": "AIの回答待ち — 「レビューを終える」で送信",
   "Copy path": "パスをコピー", "copy": "コピー", "none": "なし",
+  "Comment on this group (its intent, the design, …)":
+    "このグループについてコメントする（意図の書き方・設計など）",
+  "Comment on this line": "この行についてコメントする",
+  "Comment on this explanation": "この解説についてコメントする",
+  "Open the plan": "計画を開く",
   "Scope": "対象", "plan": "計画", "Generated": "生成",
   "anchor lost": "参照先なし", "the whole document": "ドキュメント全体",
   "Copied: ": "コピーしました: ",
@@ -1134,7 +1139,7 @@ if (st) {
   statsEl.hidden = true;
 }
 const planHtml = DATA.plan
-  ? (SERVER ? `<a href="/plan" target="_blank" title="Open the plan">${esc(DATA.plan)}</a>` : esc(DATA.plan))
+  ? (SERVER ? `<a href="/plan" target="_blank" title="${esc(L("Open the plan"))}">${esc(DATA.plan)}</a>` : esc(DATA.plan))
   : L("none");
 document.getElementById("meta").innerHTML =
   `<b>${L("Scope")}:</b> ${esc(DATA.base || "-")} &nbsp;&nbsp;<b>${L("plan")}:</b> ${planHtml} &nbsp;&nbsp;<b>${L("Generated")}:</b> ${esc(DATA.generatedAt || "-")}`;
@@ -1299,11 +1304,11 @@ function renderGroups() {
     gByFile.get(h.file).push(h.id);
   }
   intentRow.innerHTML = `
-    <p class="intent"><span class="k">Intent:</span> ${esc(g.intent || "")}` +
+    <p class="intent"><span class="k">${L("Intent:")}</span> ${esc(g.intent || "")}` +
     (g.impact ? ` <span class="impact">— ${esc(g.impact)}</span>` : "") + `</p>
     <div class="gtree ftree">${treeHtml(gByFile)}</div>
     <button class="pbtn" data-act="new" data-kind="group" data-key="${esc(g.id)}"
-      title="Comment on this group (its intent, the design, …)">+</button>`;
+      title="${esc(L("Comment on this group (its intent, the design, …)"))}">+</button>`;
   art.appendChild(intentRow);
 
   /* group comment */
@@ -1391,14 +1396,14 @@ function renderGroups() {
       const t = parsed.rows[i]?.t;
       return t === "del" ? "left" : t === "add" ? "right" : "both";
     };
-    const cbtnHtml = (key, side) => `<button class="cbtn" title="Comment on this line"
+    const cbtnHtml = (key, side) => `<button class="cbtn" title="${esc(L("Comment on this line"))}"
       data-act="new" data-kind="line" data-key="${esc(key)}"${side ? ` data-side="${side}"` : ""}>+</button>`;
 
     if (pendingExplain) {
       tbody.appendChild(wideRow(`<div class="callout explain prose-target">
         <span class="label">${L("AI note")}</span><span>${esc(pendingExplain)}</span>
         <button class="pbtn" data-act="new" data-kind="doc" data-key="${esc(sDocKey)}"
-          title="Comment on this explanation">+</button></div>`));
+          title="${esc(L("Comment on this explanation"))}">+</button></div>`));
       // Comments on this explanation render right below it
       const ec = wideRow("", "comment-slot");
       ec.hidden = true;
@@ -2340,6 +2345,7 @@ function localizeChrome() {
   ttl("#page-comment-btn", "ひとつの要素ではなく、ドキュメント全体についてコメントする");
   txt("#pick-hint", "気になる行にカーソルを合わせ、左に出る + でコメントできます");
   ttl("#target-frame", "レビュー対象のドキュメント");
+  ttl("#addbtn", "ここにコメントする");
   txt("#update-bar span", "解説が書き直されました");
   txt("#update-apply", "ページに反映");
   ttl('[data-kind="doc"][data-key="overview"]', "概要にコメントする");
