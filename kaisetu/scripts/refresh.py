@@ -40,6 +40,10 @@ MATCH_THRESHOLD = 0.45
 # the replacement is simply a different line, and the comment is told its subject is gone.
 LINE_SURVIVES = 0.5
 
+# How many leading directories a new file must share with one already on the page to join its
+# section. One is meaningless — every file under `apps/` shares that much.
+MIN_SHARED_DIRS = 2
+
 
 class Refused(Exception):
     """The refresh cannot be done, for a reason worth telling the caller about."""
@@ -486,33 +490,87 @@ def refresh(data_path) -> dict:
                         f"({unchanged} unchanged)")}
 
 
+def _dir_parts(path: str) -> tuple:
+    return tuple(str(path or "").split("/")[:-1])
+
+
+def _shared(a: tuple, b: tuple) -> int:
+    """How many leading directories two paths have in common."""
+    count = 0
+    for one, other in zip(a, b):
+        if one != other:
+            break
+        count += 1
+    return count
+
+
+def _home_for(path, order, owners, dirs):
+    """The section a new file belongs with, or None if nothing on the page is near it.
+
+    A file some section already covers goes back to that section. A brand new file goes to whoever
+    already reads that part of the tree: a new file under `libs/bff-kit/src` belongs to the story
+    about `libs/bff-kit/src`, not to a pile of its own.
+
+    The same directory always counts as near, however shallow it is — a repo whose code sits in
+    `src/`, or at the root, has no deeper path to share. Short of that, two paths must share more
+    than their top directory: everything in a monorepo shares `apps` or `libs`, and that says
+    nothing about belonging together.
+    """
+    owner = owners.get(path)
+    if owner:
+        return max(owner, key=owner.get)
+    want, best, best_score = _dir_parts(path), None, None
+    for section in order:
+        for directory, count in dirs[id(section)].items():
+            shared = _shared(want, directory)
+            if directory != want and shared < MIN_SHARED_DIRS:
+                continue
+            score = (directory == want, shared, count)
+            if best_score is None or score > best_score:
+                best, best_score = id(section), score
+    return best
+
+
 def _place_new_hunks(data, fresh, make_id) -> int:
     """File hunks that appeared since the review was written into the review tree.
 
-    A hunk in a file some section already covers joins that section, next to its neighbours. One in
-    a file nobody covers has no explanation to belong to, so it goes to a group of its own at the
-    top of the reading order, where the agent can see it and fold it in.
+    Most of them have a home already: the section covering that file, or failing that the section
+    covering the part of the tree the file sits in. Only a file with no neighbour on the page has no
+    explanation to belong to, and that one goes to a group of its own at the top of the reading
+    order, where the agent can see it and fold it in.
     """
     if not fresh:
         return 0
+    order = [section for _, section in iter_sections(data)]
     owners = defaultdict(lambda: defaultdict(int))     # file → section → how many hunks it holds
-    for _, section in iter_sections(data):
+    dirs = {}                                          # section → directory → how many hunks it holds
+    for section in order:
+        counts = defaultdict(int)
         for h in section.get("hunks") or []:
             owners[h.get("file")][id(section)] += 1
-    sections_by_id = {id(s): s for _, s in iter_sections(data)}
+            counts[_dir_parts(h.get("file"))] += 1
+        dirs[id(section)] = counts
+    sections_by_id = {id(s): s for s in order}
 
     unplaced = []
     for hunk in fresh:
         entry = {"id": make_id(), "file": hunk["file"],
                  "diff": join_diff(hunk["header"], hunk["body"]), "updated": True}
-        owner = owners.get(hunk["file"])
-        if not owner:
+        home = _home_for(hunk["file"], order, owners, dirs)
+        if home is None:
             unplaced.append(entry)
             continue
-        section = sections_by_id[max(owner, key=owner.get)]
-        hunks = section["hunks"]
-        after = max((i for i, h in enumerate(hunks) if h.get("file") == hunk["file"]), default=-1)
-        hunks.insert(after + 1, entry)
+        hunks = sections_by_id[home]["hunks"]
+        # Sit next to the nearest neighbour, so the file tree of the section stays readable
+        want, near, at = _dir_parts(hunk["file"]), -1, -1
+        for i, h in enumerate(hunks):
+            if h.get("file") == hunk["file"]:
+                near, at = len(want) + 1, i
+            elif _shared(want, _dir_parts(h.get("file"))) >= near:
+                near, at = _shared(want, _dir_parts(h.get("file"))), i
+        hunks.insert(at + 1, entry)
+        owners[hunk["file"]][home] += 1
+        dirs[home][want] += 1
     if unplaced:
         catch_all(data)["sections"][0]["hunks"].extend(unplaced)
     return len(fresh)

@@ -124,9 +124,13 @@ The running server notices the rewrite and the page reloads by itself.
   next refresh, so it always means "moved since you last looked"
 - A hunk that has left the diff is dropped, unless a comment hangs off it — then it stays marked
   `gone`, dimmed on the page, so the thread keeps its subject. If the change comes back, so does the hunk
-- A new hunk in a file some section already covers joins that section. One in a file nobody covers
-  goes to a `g-new` group at the top of the reading order, for the agent to place and explain.
-  That group disappears once its hunks have been moved out
+- A new hunk joins the section that already covers its file, or failing that the section that
+  already reads that part of the tree — a new file under `libs/bff-kit/src` belongs to the story
+  about `libs/bff-kit/src`. It lands next to its nearest neighbour there. Sharing only the top
+  directory (`apps`, `libs`) does not count as near
+- Only a file with no neighbour on the page — a new app, a new top-level file — goes to a `g-new`
+  group at the top of the reading order, for the agent to place and explain. That group disappears
+  once its hunks have been moved out
 - `stats.files` / `hunks` / `additions` / `deletions` are recomputed. `breakdown` and `core` are
   prose, so they are left alone — rewrite them when a refresh really changes the composition
 - Annotations follow their line. One whose line the fix removed is dropped, having lost what it
