@@ -62,6 +62,7 @@ your team — one file, nothing to host.
 git clone https://github.com/Rasukarusan/kaisetu.git
 ln -s "$(pwd)/kaisetu/kaisetu" ~/.claude/skills/kaisetu
 ln -s "$(pwd)/kaisetu/kaisetu-list" ~/.claude/skills/kaisetu-list
+ln -s "$(pwd)/kaisetu/kaisetu-html" ~/.claude/skills/kaisetu-html
 ```
 
 Restart Claude Code, then:
@@ -74,6 +75,7 @@ Restart Claude Code, then:
 /kaisetu HEAD~3..HEAD       # e.g. the last 3 commits
 /kaisetu docs/report.html   # review the rendered page itself
 /kaisetu docs/design.md     # review a Markdown document the same way
+/kaisetu-html               # write only the write-up, no diff review
 /kaisetu-list               # list and reopen past reviews
 ```
 
