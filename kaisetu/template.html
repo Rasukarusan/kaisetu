@@ -55,6 +55,16 @@
   --tip-bg: #22252b;
   --tip-ink: #ffffff;
   --shadow: 0 1px 2px rgba(30, 35, 48, .05), 0 4px 14px rgba(30, 35, 48, .05);
+  /* Composition bar. Hand-written code is the saturated one; generated files are the faintest,
+     because the point of the bar is how little of a big diff is actually there to read. */
+  --comp-code: #2f6bb0;
+  --comp-test: #2c7a4b;
+  --comp-migration: #7a5bb0;
+  --comp-infra: #c07f00;
+  --comp-config: #8a919f;
+  --comp-docs: #3f9a97;
+  --comp-generated: #c8cdd6;
+  --comp-other: #aeb5c0;
 }
 /* Dark theme. Applied when the user toggles it (data-theme) or follows the OS preference. */
 :root[data-theme="dark"] {
@@ -105,6 +115,14 @@
   --tip-bg: #e6e9ef;
   --tip-ink: #14171c;
   --shadow: 0 1px 2px rgba(0, 0, 0, .35), 0 4px 14px rgba(0, 0, 0, .25);
+  --comp-code: #6cb1f0;
+  --comp-test: #57ab7a;
+  --comp-migration: #a58bdc;
+  --comp-infra: #d9a53f;
+  --comp-config: #7b8494;
+  --comp-docs: #52b3b0;
+  --comp-generated: #3b4350;
+  --comp-other: #4a5364;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -155,6 +173,14 @@
     --tip-bg: #e6e9ef;
     --tip-ink: #14171c;
     --shadow: 0 1px 2px rgba(0, 0, 0, .35), 0 4px 14px rgba(0, 0, 0, .25);
+    --comp-code: #6cb1f0;
+    --comp-test: #57ab7a;
+    --comp-migration: #a58bdc;
+    --comp-infra: #d9a53f;
+    --comp-config: #7b8494;
+    --comp-docs: #52b3b0;
+    --comp-generated: #3b4350;
+    --comp-other: #4a5364;
   }
 }
 * { box-sizing: border-box; }
@@ -304,6 +330,42 @@ main { max-width: 1060px; margin: 0 auto; padding: 28px 24px 64px; }
   font-size: 14.5px; line-height: 1.9; color: var(--ink);
   margin: 0 0 6px; max-width: 880px;
 }
+/* ---------- composition ---------- */
+/* "89 files, +6668" reads as a mountain, and most of it is usually lock files and snapshots.
+   The bar answers "how much of this is actually mine to read" before the reader starts. */
+.composition { max-width: 880px; margin: 18px 0 0; }
+.comp-label {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .18em;
+  color: var(--ink-faint); margin-bottom: 8px;
+}
+.comp-bar {
+  display: flex; height: 10px; border-radius: 5px; overflow: hidden;
+  background: var(--soft-bg); border: 1px solid var(--border);
+}
+.comp-bar .seg { display: block; min-width: 3px; }
+.comp-legend {
+  list-style: none; margin: 11px 0 0; padding: 0;
+  display: grid; gap: 4px 24px; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+}
+.comp-legend li {
+  display: grid; grid-template-columns: 9px minmax(0, 1fr) auto auto auto;
+  align-items: baseline; gap: 9px; font-size: 13px; color: var(--ink-soft);
+}
+.comp-legend .dot { display: block; width: 9px; height: 9px; border-radius: 2px; align-self: center; }
+.comp-legend .nm { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.comp-legend .fl, .comp-legend .ln, .comp-legend .pc { font-family: var(--mono); font-size: 11.5px; }
+.comp-legend .fl { color: var(--ink-faint); }
+.comp-legend .ln { color: var(--green); }
+.comp-legend .pc { color: var(--ink-faint); min-width: 32px; text-align: right; }
+.comp-core { margin: 12px 0 0; font-size: 13.5px; color: var(--ink-soft); }
+.k-code { background: var(--comp-code); }
+.k-test { background: var(--comp-test); }
+.k-migration { background: var(--comp-migration); }
+.k-infra { background: var(--comp-infra); }
+.k-config { background: var(--comp-config); }
+.k-docs { background: var(--comp-docs); }
+.k-generated { background: var(--comp-generated); }
+.k-other { background: var(--comp-other); }
 .overview .tagline {
   font-size: 19px; font-weight: 700; line-height: 1.5;
   margin: 0 0 10px;
@@ -841,6 +903,7 @@ function savePrefs(update) {
     <button class="pbtn" data-act="new" data-kind="doc" data-key="overview" title="Comment on the overview">+</button>
   </div>
   <div class="doc-comment" data-dcwrap="overview"></div>
+  <div class="composition diff-only" id="composition" hidden></div>
 
   <div class="sec-label">01 / CHANGE GROUPS (BY IMPORTANCE)</div>
   <div class="meta-line" id="meta"></div>
@@ -962,7 +1025,7 @@ const JA = {
   "Comment on this line": "この行についてコメントする",
   "Comment on this explanation": "この解説についてコメントする",
   "Open the plan": "計画を開く",
-  "Scope": "対象", "plan": "計画", "Generated": "生成",
+  "Scope": "対象", "plan": "計画", "Generated": "生成", "COMPOSITION": "内訳",
   "anchor lost": "参照先なし", "the whole document": "ドキュメント全体",
   "Copied: ": "コピーしました: ",
   "Results sent back to the session. The page stays usable":
@@ -1138,6 +1201,32 @@ if (st) {
 } else {
   statsEl.hidden = true;
 }
+/* What the added lines are actually made of. Optional: no breakdown, no block. */
+(function renderComposition() {
+  const el = document.getElementById("composition");
+  const rows = (st && st.breakdown) || [];
+  if (!rows.length) return;
+  const total = rows.reduce((n, r) => n + (r.additions || 0), 0);
+  if (!total) return;
+  const pct = r => (r.additions || 0) * 100 / total;
+  /* Under 1% still gets a printed "1%" rather than "0%": the row exists, so it is not nothing */
+  const show = r => Math.max(1, Math.round(pct(r)));
+  const kind = r => "k-" + esc(r.kind || "other");
+  el.innerHTML =
+    `<div class="comp-label">${L("COMPOSITION")}</div>
+     <div class="comp-bar">` +
+    rows.map(r => `<span class="seg ${kind(r)}" style="width:${pct(r).toFixed(2)}%"
+       title="${esc(r.label || "")} — ${show(r)}%"></span>`).join("") +
+    `</div><ul class="comp-legend">` +
+    rows.map(r => `<li><span class="dot ${kind(r)}"></span>
+       <span class="nm" title="${esc(r.label || "")}">${esc(r.label || "")}</span>
+       <span class="fl">${nOf(r.files ?? "?", "files", "ファイル")}</span>
+       <span class="ln">+${r.additions ?? "?"}</span>
+       <span class="pc">${show(r)}%</span></li>`).join("") +
+    `</ul>` +
+    (st.core ? `<p class="comp-core">${esc(st.core)}</p>` : "");
+  el.hidden = false;
+})();
 const planHtml = DATA.plan
   ? (SERVER ? `<a href="/plan" target="_blank" title="${esc(L("Open the plan"))}">${esc(DATA.plan)}</a>` : esc(DATA.plan))
   : L("none");

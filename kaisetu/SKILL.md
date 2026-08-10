@@ -52,6 +52,15 @@ There are two modes, decided by what is being reviewed:
 - Save:
   - `diff.patch`: the full diff (`git diff ... > diff.patch`)
   - stats: `git diff --shortstat` and `grep -c '^@@' diff.patch` (files / hunks / +N −N)
+- Work out what those lines are made of, so the reader isn't reading a number that overstates the
+  change. Take the per-file counts and bucket them by path:
+  ```bash
+  git diff "$BASE"...HEAD --numstat | sort -rn   # added / deleted / path, biggest first
+  ```
+  Buckets: `generated` (lock files, schema snapshots, generated clients and openapi) / `test` /
+  `code` / `migration` / `infra` (CI, Terraform, task definitions) / `config` / `docs`.
+  Note the files and added lines per bucket, and which few files actually carry the intent —
+  they become `stats.breakdown` and `stats.core` (see schema.md).
 
 ## 2. Group and explain
 
