@@ -21,6 +21,9 @@ language the user is conversing in.
   "branch": "feature/url-cleanup",                      // branch the diff was taken on (git rev-parse --abbrev-ref HEAD).
                                                         // How a rerun of the skill finds this review again — always write it
   "plan": "plans/url-cleanup.md",                       // plan file consulted (path relative to repo root), or null. Rendered as a link served at /plan
+  "explain": "explain.html",                            // the write-up for the team, next to this file. Behind the page's
+                                                        // Explain tab, commented on row by row like a document review.
+                                                        // Write it before the file exists: the tab shows as pending until it lands
   "repoRoot": "/Users/me/repos/myapp",                  // absolute path of the target repo (used by /kaisetu-list as the base path when reopening)
   // How to take this diff again once the code has been fixed. See "Re-taking the diff" below
   "scope": { "cmd": "git diff 4f2a1c9...HEAD", "cwd": "/Users/me/repos/myapp" },
@@ -192,6 +195,19 @@ as a fallback anchor for when the document changes. Markdown headings are render
 selectors (`#open-questions`) survive edits anywhere else in the file. `key: "page"` is a comment on the
 document as a whole.
 
+## The write-up (explain)
+
+`explain` names the shareable page for the same branch, written after the review opens (see
+`explain.md`). It lives next to review-data.json and is reached from the header's **Explain** tab.
+
+- Written into review-data.json **before the file exists**: the tab shows as pending, and lights up
+  by itself within seconds of the file landing. Rewriting the file reloads the tab only — the review
+  page around it is left alone.
+- The same commenting as document review mode: comments are anchored to a CSS selector and come back
+  in `elementComments`. In a diff review those are always comments on the write-up.
+- `explainReady` / `explainVersion` / `explainPath` are filled in by `serve.py`, and `explainInline`
+  by `serve.py --build`. Never write any of them by hand.
+
 ## Granularity guide
 
 The page is a reading guide, not a write-up of the implementation. Consolidate: fewer, larger units
@@ -310,7 +326,8 @@ Written when "Finish" is pressed. Each comment is a thread of alternating human 
   "docComments": [                // comments on prose the AI wrote (overview / section explanations)
     { "target": "overview", "label": "Overview", "messages": [ … ], "resolved": false, "awaiting": true }
   ],
-  "elementComments": [            // document review mode: comments on elements of the reviewed document
+  "elementComments": [            // comments on elements of the document in the iframe:
+                                  // the reviewed document, or the write-up in a diff review
     {
       "key": "body > main > p:nth-of-type(1)",
       "selector": "body > main > p:nth-of-type(1)",   // null = a comment on the whole document (key "page")
@@ -321,6 +338,7 @@ Written when "Finish" is pressed. Each comment is a thread of alternating human 
     }
   ],
   "doc": "docs/release-notes.md",   // reviewed document (null in diff mode)
+  "explain": "explain.html",        // the write-up the element comments above are on (null when there is none)
   "markdown": "…"                 // human-readable summary (threads as nested bullet lists)
 }
 ```

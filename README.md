@@ -42,6 +42,17 @@ A review lives as long as its branch. Run `/kaisetu` again on a branch you have 
 it asks whether to reopen that review or start a new one — reopening keeps the comment threads and
 brings the code up to date.
 
+## The same branch, written up for everyone else
+
+The diff has a second audience: the teammate who will never open it. While you are reading the
+review, the agent writes **explain.html** — one self-contained page with figures, a cast and the
+design decisions, for engineers and non-engineers both. It shows up in the header's **Explain** tab
+the moment it is ready.
+
+It is part of the review, not a separate errand: comment on a paragraph there exactly as you comment
+on a diff line, and the agent fixes the page. "Open ↗" and "Copy file path" are how it leaves for
+your team — one file, nothing to host.
+
 
 ## Install as a skill
 
