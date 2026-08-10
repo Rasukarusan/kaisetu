@@ -38,6 +38,10 @@ Once you've commented and the AI has fixed the code, press "Refresh" in the head
 the explanations and the comment threads all stay; only the code catches up with the working tree,
 and every hunk that moved is badged "updated". There is no second review to sit through.
 
+A review lives as long as its branch. Run `/kaisetu` again on a branch you have already reviewed and
+it asks whether to reopen that review or start a new one — reopening keeps the comment threads and
+brings the code up to date.
+
 
 ## Install as a skill
 

@@ -18,6 +18,8 @@ language the user is conversing in.
                                                         // the prose when omitted, so it is rarely needed
   "generatedAt": "2026-07-25 09:30",                    // generation time (write it yourself; don't compute in JS)
   "base": "main..HEAD + unstaged",                      // human description of the diff scope
+  "branch": "feature/url-cleanup",                      // branch the diff was taken on (git rev-parse --abbrev-ref HEAD).
+                                                        // How a rerun of the skill finds this review again — always write it
   "plan": "plans/url-cleanup.md",                       // plan file consulted (path relative to repo root), or null. Rendered as a link served at /plan
   "repoRoot": "/Users/me/repos/myapp",                  // absolute path of the target repo (used by /kaisetu-list as the base path when reopening)
   // How to take this diff again once the code has been fixed. See "Re-taking the diff" below
@@ -215,14 +217,17 @@ detail. Titles, intents and overview lines carry no identifiers or syntax; name 
 
 ## List metadata (meta.json)
 
-A small file `/kaisetu-list` uses for its listing. Put it next to review-data.json.
-All values are copies of the same-named fields in review-data.json (so the list never parses the full diff).
+A small file `/kaisetu-list` uses for its listing, and `scripts/find_review.py` uses to tell whether
+this branch has been reviewed before. Put it next to review-data.json.
+All values are copies of the same-named fields in review-data.json (so neither ever parses the full diff).
 
 ```jsonc
 {
   "title": "Review of unstaged app/system URL cleanup",
   "tagline": "Consolidate URL building into one place",
-  "repoRoot": "/Users/me/repos/myapp",
+  "branch": "feature/url-cleanup",       // branch the review was taken on — what find_review.py matches
+  "repoRoot": "/Users/me/repos/myapp",   // also matched, so two clones of one repo stay apart
+  "doc": "docs/release-notes.md",        // document reviews only: the reviewed file
   "generatedAt": "2026-07-25 09:30"
 }
 ```
