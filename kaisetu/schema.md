@@ -24,18 +24,18 @@ language the user is conversing in.
   "groups": [
     {
       "id": "g1",                       // unique ID (g1, g2, ...)
-      "title": "Shared URL / host-check foundation",
-      "intent": "Consolidate per-deployment-mode URL building and host checks into one place…", // why this change exists (1–3 sentences)
-      "impact": "Foundation code also used on the legacy path, so the blast radius is wide.",   // blast-radius note (optional)
+      "title": "Shared URL and host-check foundation",  // short plain noun phrase — no identifiers, no dash
+      "intent": "URL building and host checks for every deployment mode live in one place…",  // what this part does and why (1–2 sentences)
+      "impact": "Spans the web app, the admin tools, and the legacy path.",  // one sentence: which areas it reaches (optional)
       "importance": "high",             // "high" | "medium" | "low" — how carefully this needs reading
       "tags": ["refactor"],             // feat / fix / refactor / test / docs / chore etc.
       "sections": [
-        // Coherent per-feature units. Explanations are written at this level.
+        // 1–3 per group. A section is a story within the group, not one mechanism or one file.
         // Hunks from the same file may appear in multiple sections/groups.
         {
           "id": "s1",                              // unique ID (s1, s2, ...)
-          "title": "New shared entry point resolveAppUrl",
-          "explain": "URL building is consolidated into this function; the subdomain/legacy-path branches now live here. Call sites…", // coherent explanation (a few sentences)
+          "title": "Shared URL resolution",
+          "explain": "Builds every app and admin URL from one function, with the deployment-mode branches kept inside it. Call sites pass the mode instead of assembling hosts themselves.", // 1–3 sentences
           "hunks": [
             {
               "id": "h079",                                    // unique ID (h001, h002, ...)
@@ -43,7 +43,7 @@ language the user is conversing in.
               "diff": "@@ -1,10 +1,13 @@\n import Cookies from 'js-cookie';\n+import { vi } from 'vitest';\n-import { save } from './auth';",
               // ↑ first line is the @@ header, rest is the hunk body as unified diff (verbatim from git diff)
               "annotations": [
-                // Only where line-level notes are needed (put longer explanations in the section's explain)
+                // Only where one line is unreadable without a note. One sentence, a handful per review.
                 {
                   "type": "explain",              // "explain" (note) | "question" (something to confirm with the human)
                   "match": "import { vi }",       // anchor: shown right below the first hunk-body line containing this string
@@ -122,10 +122,26 @@ document as a whole.
 
 ## Granularity guide
 
-- **group** = the intent of a change (the unit importance is judged on)
-- **section** = a coherent per-feature unit (the unit of explanation). Size it so "reading this section
-  gives you the whole change for that feature"
-- **annotation** = a line-level note. Not every hunk needs one
+The page is a reading guide, not a write-up of the implementation. Consolidate: fewer, larger units
+with shorter text. See "Group and explain" in SKILL.md for the writing rules.
+
+- **group** = one architectural unit of intent — a service, a layer, a boundary (the unit importance is
+  judged on). **4–7 groups, however large the diff is**; a 100-file diff is still 4–7 groups
+- **section** = a story within the group (the unit of explanation). **1–3 per group**; a section holding
+  50 hunks is normal. Never one per file, per mechanism, or per edge case
+- **annotation** = a note on one line that can't be read without it. A handful across the whole review
+
+| Field | Budget |
+|---|---|
+| `tagline` | 1 sentence |
+| `overview` | 3–5 lines, one point and one sentence per line |
+| `intent` | 1–2 sentences |
+| `impact` | 1 sentence naming the areas the change reaches |
+| `explain` | 1–3 sentences |
+| `annotations[].text` | 1 sentence |
+
+These are hard caps. If the text doesn't fit, the unit is too fine-grained — merge it, or drop the
+detail. Titles, intents and overview lines carry no identifiers or syntax; name the role in plain words.
 
 ## List metadata (meta.json)
 
