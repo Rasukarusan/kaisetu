@@ -1,6 +1,6 @@
 ---
 name: kaisetu
-description: Group a large diff by intent and launch a local review UI, sorted by importance with AI explanations. The human makes the review judgments; comments made on screen come back to the session via "Finish". Use explicitly for large diffs or self-review after implementing a plan. Given an .html or .md file instead, it reviews that document itself - rendered in the UI and commented on row by row with a + button, with no grouping or explanations.
+description: Group a large diff by intent and launch a local review UI, sorted by importance with AI explanations. The human makes the review judgments; comments made on screen come back to the session via "Finish". It also writes explain.html, a self-contained write-up of the branch for the team, shown in the page's Explain tab and commented on the same way. Use explicitly for large diffs or self-review after implementing a plan. Given an .html or .md file instead, it reviews that document itself - rendered in the UI and commented on row by row with a + button, with no grouping or explanations.
 ---
 
 # kaisetu
@@ -33,6 +33,7 @@ There are two modes, decided by what is being reviewed:
 ```
 0. Already reviewed on this branch? → ask: reopen it, or start a new one
 1. Collect diff → 2. Group + explain → 3. Generate review-data.json → 4. Start serve.py (browser opens)
+→ 4.5 Write explain.html while the human reads (it lands in the page's Explain tab)
 → 5. Human comments on screen (diff lines, groups, overview, AI explanations) → "Finish"
 → 6. Read the result JSON and respond (fix code / answer / rewrite explanations)
 → 7. Re-take the diff so the page shows the fixed code
@@ -244,6 +245,9 @@ Read your own prose top to bottom and fix whatever fails:
    Without `scope` the diff can never be taken again, and the whole review has to be regenerated to
    see a one-line fix — so write it every time.
    Set `branch` to the branch the diff was taken on (`git rev-parse --abbrev-ref HEAD`).
+   Set `explain` to `"explain.html"` — the write-up you produce in step 4.5. **Write it now, before
+   the file exists**: that is what puts the pending Explain tab on the page, so the reader knows it
+   is coming.
    Also write `$REVIEW_DIR/meta.json` for the list view (`/kaisetu-list` reads it instead of opening
    the full diff; it contains only title / tagline / branch / repoRoot / generatedAt — see schema.md).
    **`branch` is what step 0 matches on**, so a review written without it can never be found again
@@ -267,7 +271,23 @@ Read your own prose top to bottom and fix whatever fails:
    this command exits, and you get a task notification.)
    In Codex, poll the server session with an empty `write_stdin`, or check for the result file on the
    next user turn. Never block on sleep or wait for long periods when no result exists.
-4. Tell the user: "The review page is open. When you're done, press 'Finish' on the page." Then wait.
+4. Tell the user: "The review page is open. When you're done, press 'Finish' on the page."
+
+## 4.5. Write the write-up for the team
+
+The same branch has a second reader: the teammate who will never open the diff. They get
+`$REVIEW_DIR/explain.html` — one self-contained page, with figures and a cast, reachable from the
+**Explain** tab in the header and openable on its own to send on.
+
+**Write it now, right after the page opens** — the human is already reading the diff, so the write-up
+costs them no waiting. The page picks the file up within seconds of it landing: the tab stops being
+pending and says so.
+
+Follow `$SKILL_DIR/explain.md`. It is built from the understanding you already have — the overview,
+the group intents and the section explanations at a different altitude — not from another pass over
+the code.
+
+Then tell the user in one line that the write-up is on the Explain tab, with its path.
 
 ## 5–7. Ingest results, respond, and re-take the diff
 
@@ -288,6 +308,9 @@ Comments are **threads** (human comment → AI answer → human reply → …).
      Never change `groups[].id` / `sections[].id` / a hunk's `id` or `diff` — comments hang off a hunk
      ID and a line number, so editing either by hand moves someone's comment onto a different line.
      Moving a whole hunk entry to another section is safe: its ID and its body travel with it.
+   - `elementComments` in a diff review are **comments on the write-up** (the result's `explain` says
+     which file). Fix `$REVIEW_DIR/explain.html` directly — the page reloads the Explain tab within
+     seconds and the comments stay anchored. Answer under `elementComments` in replies.json.
 3. **Write your answers to `$REVIEW_DIR/review-data.replies.json`** (format in schema.md).
    The page polls it every few seconds and shows each answer in its thread as an "AI" message.
    If you fixed code, also write an answer like "Fixed: …".
@@ -363,6 +386,9 @@ already on this branch is reopened rather than filed again.
 
 ## Notes
 
+- The write-up is a file like any other: rewrite `$REVIEW_DIR/explain.html` whenever, and the Explain
+  tab follows within seconds. When a fix to the code makes something in it untrue, fix it there too —
+  that page is what the team reads instead of the diff.
 - **If the user asks in chat to rewrite the overview etc., handle it the same way**: rewrite the field in
   `$REVIEW_DIR/review-data.json` and the page rebuilds within seconds (no need to wait for
   "Finish", no server restart).

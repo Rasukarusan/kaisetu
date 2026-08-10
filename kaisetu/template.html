@@ -236,6 +236,33 @@ button { font-family: inherit; }
   cursor: pointer; user-select: none; white-space: nowrap;
 }
 .topbar .opt input { accent-color: var(--blue); cursor: pointer; }
+
+/* ---------- view tabs (the diff / the write-up) ---------- */
+/* Only there when the review carries a write-up. The two views share this page's chrome — the
+   title, the comment counter and Finish stay put while the middle swaps. */
+.viewtabs {
+  display: flex; gap: 2px; padding: 2px;
+  background: var(--surface-3); border: 1px solid var(--border); border-radius: 9px;
+}
+/* A review without a write-up has one view, so it gets no tabs at all */
+.viewtabs[hidden] { display: none; }
+.vt {
+  display: flex; align-items: center; gap: 6px; white-space: nowrap;
+  font-family: var(--mono); font-size: 12px; color: var(--ink-soft);
+  background: none; border: 0; border-radius: 7px; padding: 4px 12px; cursor: pointer;
+}
+.vt:hover:not(.active):not(:disabled) { color: var(--ink); }
+.vt.active { background: var(--card); color: var(--ink); font-weight: 600; box-shadow: var(--shadow); }
+.vt:disabled { cursor: default; color: var(--ink-faint); }
+/* The write-up is usually still being written when the page opens. The dot says so, and turns
+   blue for the one glance after it lands. */
+.vt .dot { display: none; width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint); }
+.vt:disabled .dot, .vt.fresh .dot { display: block; }
+.vt:disabled .dot { animation: vt-pulse 1.5s ease-in-out infinite; }
+.vt.fresh .dot { background: var(--blue); animation: none; }
+@keyframes vt-pulse { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
+body:not(.mode-explain) .explain-only { display: none; }
+body:not(.has-explain) .explain-help { display: none; }
 body.hide-tests :is(.hunk.is-test, .section-head.is-test, .ft-file.is-test,
   .group.is-test, .index-card.is-test) { display: none; }
 
@@ -727,6 +754,9 @@ body.mode-doc main { display: none; }
   flex: none; display: flex; align-items: center; gap: 8px;
   padding: 7px 12px; border-bottom: 1px solid var(--border); background: var(--card);
 }
+.doc-toolbar .tb-spacer { flex: 1; }
+/* The write-up is one self-contained file: these two are how it leaves this page for a teammate */
+body.mode-explain .doc-toolbar a.mini-btn { display: inline-block; text-decoration: none; }
 .frame-wrap { position: relative; flex: 1; min-height: 0; }
 .preview iframe { display: block; width: 100%; height: 100%; border: 0; background: #fff; }
 /* Overlay above the iframe: the + button, the outline it previews, and numbered pins.
@@ -896,6 +926,11 @@ function savePrefs(update) {
   <span class="logo">KAISETU</span>
   <h1 id="title"></h1>
   <span class="stats-chip" id="stats"></span>
+  <div class="viewtabs" id="viewtabs" hidden>
+    <button class="vt active" data-view="diff" title="The diff, grouped and explained">Diff</button>
+    <button class="vt" data-view="explain" id="tab-explain" disabled
+      title="The write-up for the team — still being written">Explain<span class="dot"></span></button>
+  </div>
   <span class="spacer"></span>
   <label class="opt diff-only" title="Show the diff side by side (old left, new right)"><input type="checkbox" id="split-mode" checked> Split</label>
   <label class="opt diff-only" title="Hide hunks in test files"><input type="checkbox" id="hide-tests" checked> Hide tests</label>
@@ -937,6 +972,11 @@ function savePrefs(update) {
     <div class="doc-toolbar">
       <button class="mini-btn" id="page-comment-btn"
         title="Comment on the document as a whole, rather than on one element">+ Comment on the whole document</button>
+      <span class="tb-spacer explain-only"></span>
+      <button class="mini-btn explain-only" id="explain-copy"
+        title="Copy the path of the file — it is self-contained, so sending it is enough">Copy file path</button>
+      <a class="mini-btn explain-only" id="explain-open" href="/explain" target="_blank" rel="noopener"
+        title="Open the write-up on its own, without this page's chrome">Open ↗</a>
     </div>
     <div class="frame-wrap">
       <iframe id="target-frame" title="Reviewed document"></iframe>
@@ -965,6 +1005,7 @@ function savePrefs(update) {
       <tr class="diff-only"><td class="key">j / k</td><td>Jump to the next / previous group</td></tr>
       <tr class="diff-only"><td class="key">Refresh</td><td>Take the diff again once the code has been fixed — the groups, the explanations and your comments all stay, and every hunk that moved is badged "updated"</td></tr>
       <tr class="diff-only"><td class="key">Split</td><td>Side-by-side (old left, new right) or unified — drag the boundary between the sides to resize it, double-click to reset. The choice is remembered</td></tr>
+      <tr class="explain-help"><td class="key">Explain</td><td>The write-up of this branch for the team — one self-contained HTML file. Comment on it row by row like a diff line; "Open ↗" and "Copy file path" are how it leaves this page</td></tr>
       <tr class="doc-only"><td class="key">+</td><td>Hover a paragraph, a heading, a list item or a table row — press the + in its gutter to comment</td></tr>
       <tr class="doc-only"><td class="key">pin</td><td>Once commented on, a row keeps a numbered pin in place of the +; click a pin or a comment to jump between them</td></tr>
       <tr class="doc-only"><td class="key">p</td><td>Toggle comment mode (turn it off to click links and buttons in the document)</td></tr>
@@ -1014,6 +1055,18 @@ const VERSION = "__REVIEW_VERSION__"; // review-data.json version (used to detec
 const DOC_MODE = !!(DATA.doc || DATA.docInline);
 const DOC_MARKDOWN = DATA.docKind === "markdown";
 if (DOC_MODE) document.body.classList.add("mode-doc");
+/* A diff review can carry a write-up of the same branch — the page a teammate is given instead of
+   the diff. It is not a second page: it opens in this one, in the iframe document review already
+   uses, and is commented on row by row the same way. It is usually still being written when the
+   review opens, so the tab starts pending and lights up when the file lands. */
+const HAS_EXPLAIN = !DOC_MODE && !!(DATA.explain || DATA.explainInline);
+if (HAS_EXPLAIN) document.body.classList.add("has-explain");
+/* Which of the two the middle of the page is showing right now */
+const docViewActive = () => document.body.classList.contains("mode-doc");
+/* The iframe machinery — rows, anchors, pins — is set up at the bottom of this script, and the
+   write-up's is set up later still (the first time the reader opens it). Until then a comment on
+   the document can be counted and listed, but not placed. */
+let docReady = false;
 
 /* ---------- language ---------- */
 /* The review itself is written in whatever language the user talks to the agent in, so the labels
@@ -1056,6 +1109,9 @@ const JA = {
   "Refresh failed": "Refresh できませんでした",
   "Written on a line the diff no longer has": "この指摘を書いた行は差分から無くなりました",
   "Nothing to copy": "コピーするものがありません",
+  "The write-up is ready — see the Explain tab": "解説ができました — Explain タブで読めます",
+  "The write-up for the team — comment on it the same way":
+    "チームに渡す解説。差分と同じようにコメントできます",
   "Copied the summary": "まとめをコピーしました",
   "Copy failed": "コピーできませんでした",
 };
@@ -1316,7 +1372,7 @@ if (SERVER) {
 /* Rebuild the page when review-data.json (the explanations) is rewritten.
    Comments are restored from the server's state.json and localStorage, so nothing is lost. */
 const SS_SCROLL = "kaisetu:scroll", SS_UPDATED = "kaisetu:updated", SS_FRAME = "kaisetu:frameScroll",
-      SS_REFRESHED = "kaisetu:refreshed";
+      SS_REFRESHED = "kaisetu:refreshed", SS_VIEW = "kaisetu:view";
 function applyDataUpdate() {
   sessionStorage.setItem(SS_SCROLL, String(window.scrollY));
   sessionStorage.setItem(SS_UPDATED, "1");
@@ -1330,7 +1386,9 @@ function applyDataUpdate() {
 if (SERVER) {
   setInterval(async () => {
     try {
-      const { version } = await (await fetch("/api/version")).json();
+      const { version, explain } = await (await fetch("/api/version")).json();
+      // The write-up moves on its own clock — it lands, or gets fixed, without rebuilding this page
+      if (HAS_EXPLAIN) syncExplain(explain || "");
       if (!version || version === VERSION) return;
       // Rebuilding while typing would lose the draft, so ask via the bar instead
       if (document.querySelector(".comment-editor")) {
@@ -1766,14 +1824,19 @@ function renderThread(key, kind, editAt = null) {
 /* ---------- counters / drawer ---------- */
 /* Enumerate commented threads as [key, kind] (docs → groups → lines; document mode: elements in document order) */
 function eachThread() {
+  // Comments on the document in the iframe, in page order once the iframe is up. Before that
+  // (a review restored from state.json, counted before the machinery below exists) plain key order
+  const elKeys = () => (docReady ? elKeysInOrder() : Object.keys(state.elComments));
   const out = [];
   if (DOC_MODE) {
-    for (const key of elKeysInOrder()) if (msgsOf(key, "el").length) out.push([key, "el"]);
+    for (const key of elKeys()) if (msgsOf(key, "el").length) out.push([key, "el"]);
     return out;
   }
   for (const key of Object.keys(state.docComments)) if (msgsOf(key, "doc").length) out.push([key, "doc"]);
   for (const g of groups) if (msgsOf(g.id, "group").length) out.push([g.id, "group"]);
   for (const key of Object.keys(state.comments)) if (msgsOf(key, "line").length) out.push([key, "line"]);
+  // A diff review's element comments are the ones written on the write-up
+  if (HAS_EXPLAIN) for (const key of elKeys()) if (msgsOf(key, "el").length) out.push([key, "el"]);
   return out;
 }
 
@@ -1825,9 +1888,9 @@ function toggleDrawer(open) {
   document.getElementById("comment-count").classList.toggle("active", on);
 }
 
-/* One comment surface per mode: the drawer over a diff, the thread column over an HTML page */
+/* One comment surface per view: the drawer over a diff, the thread column over a document */
 function toggleComments(open) {
-  if (DOC_MODE) toggleThreadCol(open); else toggleDrawer(open);
+  if (docViewActive()) toggleThreadCol(open); else toggleDrawer(open);
 }
 
 /* ---------- summary markdown ---------- */
@@ -1837,6 +1900,7 @@ function buildMarkdown() {
   lines.push(DOC_MODE
     ? `- Reviewed document: ${DATA.doc || "-"} / generated: ${DATA.generatedAt || "-"}`
     : `- Scope: ${DATA.base || "-"} / plan: ${DATA.plan || "none"} / generated: ${DATA.generatedAt || "-"}`);
+  if (HAS_EXPLAIN) lines.push(`- Write-up (element comments below are on this file): ${DATA.explainPath || DATA.explain}`);
   lines.push("");
   if (DATA.tagline || DATA.overview) {
     lines.push("## Overview");
@@ -1915,7 +1979,9 @@ async function finishReview() {
     title: DATA.title,
     finished: true,
     doc: DATA.doc || null,
-    // Document mode: comments on elements of the reviewed document (selector + the text that was there)
+    // The write-up, when this review carries one: in a diff review the element comments are on it
+    explain: DATA.explain || null,
+    // Comments on elements of the document in the iframe (selector + the text that was there)
     elementComments: eachThread().filter(([, kind]) => kind === "el")
       .map(([key]) => {
         const a = state.elAnchors[key] || {};
@@ -2003,7 +2069,13 @@ document.addEventListener("click", e => {
   const item = e.target.closest(".drawer-item");
   if (item && !e.target.closest("button")) {
     const { gotoKey: key, gotoKind: kind } = item.dataset;
-    if (kind === "el") { focusEl(key); return; }
+    if (kind === "el") {
+      // In a diff review that thread lives on the write-up, so go there first
+      const opening = HAS_EXPLAIN && !docInited;
+      if (HAS_EXPLAIN) setView("explain");
+      setTimeout(() => focusEl(key), opening ? 400 : 0);   // wait for the iframe on the first open
+      return;
+    }
     const host = key ? threadHost(key, kind) : null;
     const target = kind === "group" ? document.getElementById(key)
       : kind === "line" ? host?.closest("tr") : host;
@@ -2143,7 +2215,7 @@ document.addEventListener("keydown", e => {
   if (e.key === "j" || e.key === "k") {
     const i = currentGroupIndex() + (e.key === "j" ? 1 : -1);
     if (groups[i]) document.getElementById(groups[i].id).scrollIntoView();
-  } else if (e.key === "p" && DOC_MODE) {
+  } else if (e.key === "p" && docViewActive()) {
     const cb = document.getElementById("pick-mode");
     cb.checked = !cb.checked;
     cb.dispatchEvent(new Event("change"));
@@ -2422,7 +2494,10 @@ function startPageComment() {
   threadHost("page", "el")?.querySelector("textarea")?.focus();
 }
 
-function initDocMode() {
+/* Wire up the document view and point its iframe at `src` (or, in the static build, at the
+   document inlined into the page). Called once: for the reviewed document in document review
+   mode, or the first time the reader opens the write-up. */
+function initDocMode(src, inline) {
   const preview = document.getElementById("preview");
   const pick = document.getElementById("pick-mode");
   preview.classList.toggle("picking", pick.checked);
@@ -2468,11 +2543,91 @@ function initDocMode() {
     if (y != null) { sessionStorage.removeItem(SS_FRAME); frame.contentWindow.scrollTo(0, +y); }
     syncThreadCol();
   });
-  if (SERVER) frame.src = "/target";
-  else if (DATA.docInline) frame.srcdoc = DATA.docInline;   // static build (--build)
+  if (SERVER) frame.src = src;
+  else if (inline) frame.srcdoc = inline;   // static build (--build)
   renderThreadCol();
 }
-if (DOC_MODE) initDocMode();
+docReady = true;   // everything an element comment needs to place itself now exists
+if (DOC_MODE) initDocMode("/target", DATA.docInline);
+
+/* ---------- the two views ---------- */
+/* The Explain tab shows the write-up in the same iframe, with the same commenting. Switching is
+   just a class on <body>: the header, the comment counter and Finish never move. */
+let explainVersion = DATA.explainVersion || "";
+let explainReady = !!(DATA.explainReady || DATA.explainInline);
+let docInited = DOC_MODE;
+let view = "diff";
+
+function setView(next) {
+  if (next === view || (next === "explain" && !explainReady)) return;
+  view = next;
+  sessionStorage.setItem(SS_VIEW, next);
+  const explaining = next === "explain";
+  document.body.classList.toggle("mode-doc", explaining);
+  document.body.classList.toggle("mode-explain", explaining);
+  document.querySelectorAll(".vt").forEach(b => b.classList.toggle("active", b.dataset.view === next));
+  if (explaining) {
+    document.getElementById("tab-explain").classList.remove("fresh");
+    toggleDrawer(false);   // the diff's comment drawer has no business over the write-up
+    if (!docInited) { docInited = true; initDocMode("/explain", DATA.explainInline); }
+    // The overlay is measured against a pane that was display:none a moment ago
+    requestAnimationFrame(() => { layoutPins(); layoutAddBtn(); });
+  }
+  // The counter lights up for whichever comment surface this view uses
+  document.getElementById("comment-count").classList.toggle("active",
+    explaining ? !document.getElementById("threadcol").hidden
+               : document.getElementById("drawer").classList.contains("open"));
+}
+
+/* Re-read the write-up in place, keeping the reader where they were */
+function reloadExplain() {
+  try {
+    const win = frame.contentWindow;
+    if (win) sessionStorage.setItem(SS_FRAME, String(win.scrollY));
+  } catch (e) {}
+  frame.src = "/explain?v=" + encodeURIComponent(explainVersion);
+}
+
+/* The version poll hands the write-up's mtime here every few seconds: "" until the agent writes
+   it, then a new value every time it is rewritten. */
+function syncExplain(version) {
+  if (version === explainVersion) return;
+  explainVersion = version;
+  if (!version) return;   // the file went away; leave the tab as it is
+  const tab = document.getElementById("tab-explain");
+  if (!explainReady) {
+    explainReady = true;
+    tab.disabled = false;
+    tab.classList.add("fresh");
+    tab.title = L("The write-up for the team — comment on it the same way");
+    toast(L("The write-up is ready — see the Explain tab"));
+  } else if (view === "explain") {
+    reloadExplain();
+  }
+}
+
+if (HAS_EXPLAIN) {
+  const tabs = document.getElementById("viewtabs");
+  tabs.hidden = false;
+  const tab = document.getElementById("tab-explain");
+  if (explainReady) {
+    tab.disabled = false;
+    tab.title = L("The write-up for the team — comment on it the same way");
+  }
+  tabs.addEventListener("click", e => {
+    const btn = e.target.closest(".vt");
+    if (btn && !btn.disabled) setView(btn.dataset.view);
+  });
+  // Nothing to open when there is no server (static build): the write-up is already inlined
+  if (SERVER) document.getElementById("explain-open").href = "/explain";
+  else document.getElementById("explain-open").remove();
+  document.getElementById("explain-copy").addEventListener("click", () => {
+    const path = DATA.explainPath || DATA.explain || "";
+    if (path) copyText(path, L("Copied: ") + path); else toast(L("Nothing to copy"));
+  });
+  // A rebuild (rewritten explanations) must not drop the reader back onto the diff
+  if (sessionStorage.getItem(SS_VIEW) === "explain" && explainReady) setView("explain");
+}
 
 /* ---------- init ---------- */
 /* The chrome written straight into the markup is English; a Japanese review swaps it out here.
@@ -2502,6 +2657,12 @@ function localizeChrome() {
   ttl("#drawer-close", "閉じる");
   txt("#drawer .ttl", "コメント");
   txt("#threadcol .ttl", "コメント");
+  // The tabs keep their English names in both languages — only what they promise is translated
+  ttl('[data-view="diff"]', "差分をグループごとに読む");
+  const explainTab = document.getElementById("tab-explain");
+  if (explainTab?.disabled) explainTab.title = "チームに渡す解説（いま書いています）";
+  ttl("#explain-copy", "ファイルのパスをコピーする（1枚で完結しているので、これを渡せば読めます）");
+  ttl("#explain-open", "解説だけを別タブで開く");
   txt("#page-comment-btn", "＋ ドキュメント全体にコメント");
   ttl("#page-comment-btn", "ひとつの要素ではなく、ドキュメント全体についてコメントする");
   txt("#pick-hint", "気になる行にカーソルを合わせ、左に出る + でコメントできます");
@@ -2520,6 +2681,7 @@ function localizeChrome() {
       <tr class="diff-only"><td class="key">コピー</td><td>ファイル名の隣のボタンでそのパスをコピーする</td></tr>
       <tr class="diff-only"><td class="key">j / k</td><td>次 / 前のグループへ移動</td></tr>
       <tr class="diff-only"><td class="key">左右に分割</td><td>左右に並べる（左が変更前・右が変更後）か1列にするかの切替。境界はドラッグで動かせる（ダブルクリックで中央に戻る）。選んだ状態は記憶される</td></tr>
+      <tr class="explain-help"><td class="key">Explain</td><td>このブランチの内容をチームに説明する 1 枚の HTML。差分と同じように行ごとにコメントできる。「Open ↗」「Copy file path」でこのページの外に持ち出せる</td></tr>
       <tr class="doc-only"><td class="key">＋</td><td>段落・見出し・リスト項目・表の行にカーソルを合わせ、左に出る + でコメントする</td></tr>
       <tr class="doc-only"><td class="key">ピン</td><td>コメントした行は + が番号付きのピンに変わる。ピンとコメントは相互に行き来できる</td></tr>
       <tr class="doc-only"><td class="key">p</td><td>コメントモードの切替（切るとドキュメントのリンクやボタンを普通に押せる）</td></tr>

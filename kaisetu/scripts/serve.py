@@ -18,6 +18,11 @@ human comments on element by element. Markdown is rendered to HTML on the way
 out; an HTML file is served as it is. Rewriting the file bumps the version, so
 the page reloads with the fixed document.
 
+An `explain` field points at the shareable write-up of the same branch. It is served
+at /explain and reached from the page's Explain tab, in the same iframe and with the
+same element-by-element commenting. It may be named before it exists: the page shows
+the tab as pending and lights it up when the file lands.
+
 Usage:
   serve.py <review-data.json> [--port N] [--result PATH] [--no-open]
   serve.py <review-data.json> --build [output.html]   # emit static HTML only (no server)
@@ -130,12 +135,24 @@ def main() -> None:
         ref = load_data().get("doc")
         return resolve_ref(ref, data_path) if ref else None
 
+    # The shareable write-up behind the Explain tab. Named in the data before it is written, so
+    # this stays None until the agent finishes it — that is what the tab's pending state is for.
+    def explain_target():
+        ref = load_data().get("explain")
+        return resolve_ref(ref, data_path) if ref else None
+
     def page_data() -> dict:
         # docKind tells the page whether the iframe holds our own render (Markdown) or the file itself
         data = load_data()
         target = doc_target()
         if target:
             data["docKind"] = "markdown" if is_markdown(target) else "html"
+        if data.get("explain"):
+            ex = explain_target()
+            data["explainReady"] = ex is not None
+            data["explainVersion"] = explain_version()
+            if ex:
+                data["explainPath"] = str(ex)   # what the page's "Copy file path" hands over
         return data
 
     def data_version() -> str:
@@ -145,6 +162,12 @@ def main() -> None:
         if target:
             parts.append(str(target.stat().st_mtime_ns))
         return "-".join(parts)
+
+    def explain_version() -> str:
+        # Kept out of data_version on purpose: writing the write-up must not reload the review page
+        # under the reader. The page watches this one on its own and only reloads the iframe.
+        target = explain_target()
+        return str(target.stat().st_mtime_ns) if target else ""
 
     def state_text() -> str:
         return state_path.read_text(encoding="utf-8") if state_path.is_file() else "null"
@@ -156,6 +179,9 @@ def main() -> None:
         if target:
             # No server to serve /target from, so inline the reviewed document (rendered via srcdoc)
             data["docInline"] = as_html(target).decode("utf-8")
+        explain = explain_target()
+        if explain:
+            data["explainInline"] = as_html(explain).decode("utf-8")
         out.write_text(render(data, state_text(), prefs=load_prefs()), encoding="utf-8")
         print(out)
         return
@@ -206,18 +232,22 @@ def main() -> None:
             return True
 
         def do_GET(self):
-            if self.path in ("/", "/index.html"):
+            # Routed on the path alone: the page appends a cache-busting query when it re-reads
+            # the write-up, and a link may carry one of its own
+            path = self.path.split("?", 1)[0]
+            if path in ("/", "/index.html"):
                 # Render on every request, embedding the latest review data and state (comment drafts)
                 body = render(page_data(), state_text(), data_version(), load_prefs()).encode("utf-8")
                 self._respond(200, body, "text/html; charset=utf-8")
-            elif self.path == "/api/replies":
+            elif path == "/api/replies":
                 body = replies_path.read_bytes() if replies_path.is_file() else b"{}"
                 self._respond(200, body, "application/json; charset=utf-8")
-            elif self.path == "/api/version":
-                # The page polls this; on change it re-reads the review data and rebuilds
-                body = json.dumps({"version": data_version()}).encode("utf-8")
+            elif path == "/api/version":
+                # The page polls this; on change it re-reads the review data and rebuilds.
+                # `explain` moves on its own — the page only reloads the iframe for it.
+                body = json.dumps({"version": data_version(), "explain": explain_version()}).encode("utf-8")
                 self._respond(200, body, "application/json; charset=utf-8")
-            elif self.path == "/plan":
+            elif path == "/plan":
                 plan = load_data().get("plan")
                 if not plan:
                     self._respond(404, b"plan not set")
@@ -230,7 +260,18 @@ def main() -> None:
                     self._respond(200, found.read_text(encoding="utf-8").encode("utf-8"))
                 else:
                     self._respond(404, f"plan not found: {plan}".encode("utf-8"))
-            elif self.path == "/target":
+            elif path == "/explain":
+                # The shareable write-up, shown in the page's Explain tab and openable on its own
+                ref = load_data().get("explain")
+                if not ref:
+                    self._respond(404, b"explain not set")
+                    return
+                target = explain_target()
+                if target:
+                    self._respond(200, as_html(target), "text/html; charset=utf-8")
+                else:
+                    self._respond(404, f"explain not written yet: {ref}".encode("utf-8"))
+            elif path == "/target":
                 # Document review mode: the reviewed document, shown in the page's iframe
                 ref = load_data().get("doc")
                 if not ref:

@@ -1,0 +1,960 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>[TICKET] Explainer: [one-line title]</title>
+  <!--
+  Take this CSS as it is. Light only — no dark mode.
+  Everything below <body> is a specimen of one part. Keep the ones you use and replace the content.
+  The SVGs are working examples with verified coordinates: change the words and the numbers to fit
+  your own figure. Write the content in the language the review is written in.
+-->
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f8f9fb;
+      --card: #ffffff;
+      --ink: #1f2430;
+      --sub: #5b6472;
+      --line: #dde2ea;
+      --accent: #2563eb;
+      --accent-soft: #eaf1fe;
+      --done: #2da44e;
+      --done-soft: #dcf5e3;
+      --partial: #b58500;
+      --partial-soft: #fff3c4;
+      --todo: #6e7781;
+      --todo-soft: #eef1f4;
+      --code-bg: #f1f3f7;
+      /* The two concepts being contrasted. Change to suit the subject */
+      --pair-a: #0f766e;
+      --pair-a-soft: #ddf1ee;
+      --pair-b: #b45309;
+      --pair-b-soft: #fdeedd;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+      line-height: 1.75;
+      font-size: 15px;
+    }
+
+    main {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 2.5rem 1.25rem 5rem;
+    }
+
+    header.hero {
+      margin-bottom: 2.5rem;
+    }
+
+    .kicker {
+      color: var(--accent);
+      font-weight: 700;
+      letter-spacing: .08em;
+      font-size: .8rem;
+    }
+
+    h1 {
+      font-size: 1.7rem;
+      line-height: 1.4;
+      margin: .3rem 0 .8rem;
+    }
+
+    h2 {
+      font-size: 1.25rem;
+      margin: 0 0 1rem;
+      padding-left: .7rem;
+      border-left: 4px solid var(--accent);
+    }
+
+    h3 {
+      font-size: 1rem;
+      margin: 1.2rem 0 .4rem;
+    }
+
+    p {
+      margin: .5rem 0;
+    }
+
+    section {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 1.6rem 1.8rem;
+      margin-bottom: 1.6rem;
+    }
+
+    .lead {
+      font-size: 1.02rem;
+      color: var(--sub);
+    }
+
+    /* Overview box: technical statement ＝ what it means */
+    .summary {
+      background: var(--accent-soft);
+      border-radius: 10px;
+      padding: 1rem 1.3rem;
+      margin-top: 1rem;
+    }
+
+    .summary strong {
+      color: var(--accent);
+    }
+
+    .summary li {
+      color: var(--sub);
+      margin: .7rem 0;
+    }
+
+    .summary .mean {
+      display: block;
+      color: var(--ink);
+      font-weight: 600;
+      margin-top: .15rem;
+    }
+
+    .summary .mean::before {
+      content: "＝";
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    code {
+      background: var(--code-bg);
+      border-radius: 4px;
+      padding: .1em .4em;
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      font-size: .85em;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: .6rem 0;
+    }
+
+    th,
+    td {
+      border: 1px solid var(--line);
+      padding: .45rem .7rem;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--code-bg);
+      font-size: .85rem;
+    }
+
+    /* Cast */
+    .actors {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: .8rem;
+      margin-top: .8rem;
+    }
+
+    .actor {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: .8rem 1rem;
+    }
+
+    .actor b {
+      display: block;
+      margin-bottom: .2rem;
+    }
+
+    .actor span {
+      font-size: .85rem;
+      color: var(--sub);
+    }
+
+    .actors.main {
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    }
+
+    .actor.key {
+      border: 2px solid var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .actor.key b {
+      color: var(--accent);
+      font-size: 1rem;
+    }
+
+    .actor.key span {
+      color: var(--ink);
+    }
+
+    .actor .did {
+      display: block;
+      margin-top: .5rem;
+      padding-top: .45rem;
+      border-top: 1px dashed rgba(37, 99, 235, .35);
+      font-size: .82rem;
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .actors.minor {
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      margin-top: .6rem;
+    }
+
+    .actors.minor .actor {
+      background: #fcfdfe;
+      padding: .6rem .9rem;
+    }
+
+    .actors.minor .actor b {
+      font-size: .9rem;
+      color: var(--sub);
+    }
+
+    .actors.minor .actor span {
+      font-size: .8rem;
+    }
+
+    .sec-label {
+      font-size: .8rem;
+      font-weight: 700;
+      color: var(--sub);
+      letter-spacing: .04em;
+      margin-top: 1.3rem;
+    }
+
+    .sec-label.hot {
+      color: var(--accent);
+    }
+
+    /* Figures */
+    .scroll {
+      overflow-x: auto;
+    }
+
+    svg {
+      display: block;
+      margin: 1rem auto;
+    }
+
+    svg.seq {
+      min-width: 760px;
+    }
+
+    .sv-actor {
+      fill: var(--accent-soft);
+      stroke: var(--accent);
+      rx: 8;
+    }
+
+    .sv-actor-label {
+      fill: var(--ink);
+      font-weight: 700;
+      font-size: 13px;
+      text-anchor: middle;
+    }
+
+    .sv-life {
+      stroke: var(--line);
+      stroke-dasharray: 4 4;
+    }
+
+    .sv-msg {
+      stroke: var(--ink);
+      fill: none;
+      marker-end: url(#arrow);
+    }
+
+    .sv-ret {
+      stroke: var(--sub);
+      fill: none;
+      stroke-dasharray: 5 4;
+      marker-end: url(#arrow-sub);
+    }
+
+    .sv-label {
+      fill: var(--ink);
+      font-size: 12px;
+      text-anchor: middle;
+    }
+
+    .sv-label-sub {
+      fill: var(--sub);
+      font-size: 12px;
+      text-anchor: middle;
+    }
+
+    .sv-note {
+      fill: var(--partial-soft);
+      stroke: var(--partial);
+    }
+
+    .sv-note-text {
+      fill: var(--ink);
+      font-size: 12px;
+      text-anchor: middle;
+    }
+
+    .venn {
+      max-width: 430px;
+      width: 100%;
+    }
+
+    .venn text {
+      font-size: 12px;
+      text-anchor: middle;
+    }
+
+    .fig-cap {
+      text-align: center;
+      color: var(--sub);
+      font-size: .85rem;
+      margin-top: -.3rem;
+    }
+
+    .er,
+    .tl,
+    .keys {
+      width: 100%;
+      height: auto;
+    }
+
+    .er {
+      max-width: 860px;
+    }
+
+    /* Never add `.er text { font-size }` here: CSS beats the font-size attribute and flattens every per-element size */
+    .box-new {
+      fill: var(--accent-soft);
+      stroke: var(--accent);
+    }
+
+    .box-old {
+      fill: #f4f6f9;
+      stroke: #b9c2cf;
+    }
+
+    .box-label {
+      font-weight: 700;
+      font-size: 13px;
+      text-anchor: middle;
+      fill: var(--ink);
+    }
+
+    .box-sub {
+      font-size: 11px;
+      text-anchor: middle;
+      fill: var(--sub);
+    }
+
+    .rel {
+      stroke: #98a2b3;
+      fill: none;
+      marker-end: url(#er-arrow);
+    }
+
+    .rel-label {
+      font-size: 11px;
+      fill: var(--sub);
+      text-anchor: middle;
+    }
+
+    /* Design decisions */
+    .why {
+      display: grid;
+      gap: .9rem;
+      margin-top: .8rem;
+    }
+
+    .why-item {
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--accent);
+      border-radius: 8px;
+      padding: .8rem 1.1rem;
+    }
+
+    .why-item b {
+      display: block;
+    }
+
+    .why-item p {
+      margin: .25rem 0 0;
+      color: var(--sub);
+      font-size: .92rem;
+    }
+
+    /* Status badges */
+    .badge {
+      display: inline-block;
+      border-radius: 99px;
+      padding: .05em .7em;
+      font-size: .78rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .b-done {
+      background: var(--done-soft);
+      color: var(--done);
+    }
+
+    .b-partial {
+      background: var(--partial-soft);
+      color: var(--partial);
+    }
+
+    .b-todo {
+      background: var(--todo-soft);
+      color: var(--todo);
+    }
+
+    .callout {
+      background: var(--partial-soft);
+      border: 1px solid var(--partial);
+      border-radius: 8px;
+      padding: .8rem 1.1rem;
+      font-size: .92rem;
+      margin-top: .9rem;
+    }
+
+    ol.steps {
+      padding-left: 1.4rem;
+    }
+
+    ol.steps li {
+      margin: .45rem 0;
+    }
+
+    ul.compact {
+      margin: .3rem 0;
+      padding-left: 1.3rem;
+    }
+
+    ul.compact li {
+      margin: .2rem 0;
+    }
+
+    /* Code block */
+    pre.code {
+      background: #1f2430;
+      color: #e6e9ef;
+      border-radius: 8px;
+      padding: 1rem 1.2rem;
+      overflow-x: auto;
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      font-size: .82rem;
+      line-height: 1.7;
+      margin: .8rem 0;
+    }
+
+    pre.code .k {
+      color: #9ecbff;
+    }
+
+    /* key */
+    pre.code .s {
+      color: #a5e6a5;
+    }
+
+    /* value */
+    pre.code .c {
+      color: #9aa4b2;
+    }
+
+    /* comment */
+    pre.code .hl {
+      color: #ffd479;
+      font-weight: 700;
+    }
+
+    /* the line to look at */
+
+    /* Mini tables of real data */
+    .example {
+      display: grid;
+      gap: .9rem;
+      margin: 1rem 0;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    }
+
+    .mini {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .mini>.cap {
+      font-size: .78rem;
+      font-weight: 700;
+      padding: .4rem .8rem;
+      background: var(--code-bg);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .mini table {
+      margin: 0;
+      font-size: .82rem;
+    }
+
+    .mini th,
+    .mini td {
+      border: none;
+      border-bottom: 1px solid var(--line);
+      padding: .35rem .8rem;
+    }
+
+    .mini tr:last-child td {
+      border-bottom: none;
+    }
+
+    .mini .yes {
+      color: var(--done);
+      font-weight: 700;
+    }
+
+    .mini .no {
+      color: var(--todo);
+    }
+
+    .mini.c-a>.cap {
+      background: var(--pair-a-soft);
+      color: var(--pair-a);
+    }
+
+    .mini.c-b>.cap {
+      background: var(--pair-b-soft);
+      color: var(--pair-b);
+    }
+
+    .result {
+      background: var(--accent-soft);
+      border-radius: 10px;
+      padding: .9rem 1.2rem;
+      font-size: .92rem;
+    }
+
+    .result b {
+      color: var(--accent);
+    }
+
+    footer {
+      color: var(--sub);
+      font-size: .8rem;
+      text-align: center;
+      margin-top: 2rem;
+    }
+
+    a {
+      color: var(--accent);
+    }
+
+  </style>
+</head>
+
+<body>
+  <main>
+
+    <!-- ============ Header + overview (the most-read part of the whole page) ============ -->
+    <header class="hero">
+      <div class="kicker">[TICKET] EXPLAINER FOR THE TEAM</div>
+      <h1>[what was built]<br>— [in one line] —</h1>
+      <p class="lead">[context: how things stood before, and what this branch filled in]</p>
+      <div class="summary">
+        <strong>Overview</strong>
+        <ol class="steps" style="margin:.3rem 0 0">
+          <li>
+            [technical: what was built. A file, table or function name is allowed here]
+            <span class="mean">[what changed for the people using or running it. Never a restatement of the implementation]</span>
+          </li>
+          <li>
+            [technical]
+            <span class="mean">[what it means]</span>
+          </li>
+          <li>
+            [technical]
+            <span class="mean">[what it means]</span>
+          </li>
+        </ol>
+      </div>
+    </header>
+
+    <!-- ============ Cast: leads (blue, large) and supporting parts (grey, small) ============ -->
+    <section>
+      <h2>Cast</h2>
+      <p class="sec-label hot">Hold on to these three and the rest reads — the parts this branch really changed</p>
+      <div class="actors main">
+        <div class="actor key">
+          <b>[name]</b>
+          <span>[what it normally does]</span>
+          <span class="did">This branch: [what it now does]<br>＝[what that means]</span>
+        </div>
+        <!-- Three leads or so. More than that and nothing reads as the thing to hold on to -->
+      </div>
+
+      <p class="sec-label">Existing parts around it (this branch only uses them more)</p>
+      <div class="actors minor">
+        <div class="actor"><b>[name]</b><span>[role]</span></div>
+      </div>
+    </section>
+
+    <!-- ============ Data model: Venn -> ER -> table -> real data -> output ============ -->
+    <section>
+      <h2>Data model changes</h2>
+      <p>[why this shape is needed. 1-2 sentences]</p>
+
+      <!-- For overlapping sets. Only when two concepts are being contrasted -->
+      <svg class="venn" viewBox="0 0 430 280" role="img" aria-label="[what the figure shows]">
+        <circle cx="160" cy="150" r="88" fill="var(--pair-a)" fill-opacity="0.14" stroke="var(--pair-a)"
+          stroke-width="1.5" />
+        <circle cx="270" cy="150" r="88" fill="var(--pair-b)" fill-opacity="0.14" stroke="var(--pair-b)"
+          stroke-width="1.5" />
+        <text x="84" y="24" font-size="11" font-weight="700" fill="var(--pair-a)">[left table]</text>
+        <text x="84" y="44" font-size="13" fill="var(--ink)">[what it holds]</text>
+        <text x="84" y="62" font-size="11" fill="var(--sub)">[in plain words]</text>
+        <text x="346" y="24" font-size="11" font-weight="700" fill="var(--pair-b)">[right table]</text>
+        <text x="346" y="44" font-size="13" fill="var(--ink)">[what it holds]</text>
+        <text x="346" y="62" font-size="11" fill="var(--sub)">[in plain words]</text>
+        <text x="215" y="146" font-size="14" font-weight="700" fill="var(--ink)">[name of the overlap]</text>
+        <text x="215" y="167" font-size="11" fill="var(--sub)">[what that gives you]</text>
+        <text x="106" y="214" font-size="11" fill="var(--sub)">left only -> [what happens]</text>
+        <text x="326" y="214" font-size="11" fill="var(--sub)">right only -> [what happens]</text>
+      </svg>
+
+      <h3>Where it hangs</h3>
+      <div class="scroll">
+        <svg class="er" viewBox="0 0 860 390" role="img" aria-label="[what the figure shows]">
+          <defs>
+            <marker id="er-arrow" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto">
+              <path d="M0,0 L9,4 L0,8 z" fill="context-stroke" />
+            </marker>
+          </defs>
+          <!-- Existing tables: box-old (grey) -->
+          <rect class="box-old" x="40" y="30" width="160" height="46" rx="8" />
+          <text class="box-label" x="120" y="50">[existing]</text>
+          <text class="box-sub" x="120" y="66">[what it is]</text>
+          <rect class="box-old" x="350" y="30" width="160" height="46" rx="8" />
+          <text class="box-label" x="430" y="50">[existing]</text>
+          <text class="box-sub" x="430" y="66">[what it is]</text>
+          <rect class="box-old" x="660" y="30" width="160" height="46" rx="8" />
+          <text class="box-label" x="740" y="50">[existing]</text>
+          <text class="box-sub" x="740" y="66">[what it is]</text>
+          <!-- New tables: box-new (blue) -->
+          <rect class="box-new" x="250" y="170" width="180" height="46" rx="8" />
+          <text class="box-label" x="340" y="190">[new]</text>
+          <text class="box-sub" x="340" y="206">[what it is]</text>
+          <rect class="box-new" x="600" y="170" width="190" height="46" rx="8" />
+          <text class="box-label" x="695" y="190">[new]</text>
+          <text class="box-sub" x="695" y="206">[what it is]</text>
+          <rect class="box-new" x="390" y="290" width="160" height="46" rx="8" />
+          <text class="box-label" x="470" y="310">[new]</text>
+          <text class="box-sub" x="470" y="326">[what it is]</text>
+          <!-- Relationships -->
+          <line class="rel" x1="350" y1="53" x2="206" y2="53" />
+          <line class="rel" x1="510" y1="53" x2="654" y2="53" />
+          <line class="rel" x1="345" y1="170" x2="398" y2="80" />
+          <line class="rel" x1="705" y1="170" x2="738" y2="80" />
+          <line class="rel" x1="368" y1="216" x2="438" y2="288" />
+          <line class="rel" x1="655" y1="216" x2="530" y2="288" />
+          <text class="rel-label" x="278" y="46">[relationship]</text>
+          <text class="rel-label" x="582" y="46">[relationship]</text>
+          <!-- Always include the legend -->
+          <rect class="box-new" x="40" y="352" width="16" height="14" rx="3" />
+          <text x="64" y="364" font-size="11" fill="#5b6472">added here</text>
+          <rect class="box-old" x="140" y="352" width="16" height="14" rx="3" />
+          <text x="164" y="364" font-size="11" fill="#5b6472">existing</text>
+        </svg>
+      </div>
+      <p class="fig-cap">[the one thing this structure tells you]</p>
+
+      <h3>Tables added</h3>
+      <table>
+        <tr>
+          <th style="width:9em">Kind</th>
+          <th style="width:12em">Table</th>
+          <th>Role</th>
+        </tr>
+        <tr>
+          <td>[kind]</td>
+          <td><code>[table]</code></td>
+          <td>[role, and a word on why it has this shape]</td>
+        </tr>
+      </table>
+      <div class="callout"><b>[what running this needs — whether a migration has to be previewed, and so on]</b></div>
+
+      <h3>Seen in real data</h3>
+      <div class="example">
+        <div class="mini c-a">
+          <div class="cap">[first input table]</div>
+          <table>
+            <tr>
+              <th>[column]</th>
+              <th>[column]</th>
+            </tr>
+            <tr>
+              <td>[value]</td>
+              <td class="yes">[value]</td>
+            </tr>
+          </table>
+        </div>
+        <div class="mini c-b">
+          <div class="cap">[second input table]</div>
+          <table>
+            <tr>
+              <th>[column]</th>
+              <th>[column]</th>
+            </tr>
+            <tr>
+              <td>[value]</td>
+              <td>[value]</td>
+            </tr>
+            <tr>
+              <td colspan="2" class="no">[say when a row is simply absent]</td>
+            </tr>
+          </table>
+        </div>
+        <div class="mini">
+          <div class="cap">Result — [what comes out]</div>
+          <table>
+            <tr>
+              <th>[subject]</th>
+              <th>[result]</th>
+            </tr>
+            <tr>
+              <td>[A]</td>
+              <td><span class="yes">[allowed]</span></td>
+            </tr>
+            <tr>
+              <td>[B]</td>
+              <td><span class="no">[refused]</span></td>
+            </tr>
+          </table>
+        </div>
+      </div>
+      <div class="result">[what the reader should take from the example — "same conditions, and yet one of them is refused"]</div>
+
+      <h3>What comes out in the end</h3>
+      <pre class="code"><span class="c">// [what this data is]</span>
+{
+  <span class="k">"key"</span>:  <span class="s">"value"</span>,        <span class="c">// [what it is]</span>
+  <span class="hl">"look_here"</span>: [<span class="s">"a"</span>, <span class="s">"b"</span>],   <span class="c">// <- this is the point</span>
+}</pre>
+    </section>
+
+    <!-- ============ Before / after, when the approach itself changed ============ -->
+    <section>
+      <h2>Infrastructure and environment changes</h2>
+      <div class="scroll">
+        <svg class="keys" viewBox="0 0 860 330" style="min-width:640px" role="img" aria-label="[what the figure shows]">
+          <defs>
+            <marker id="k-arrow" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto">
+              <path d="M0,0 L9,4 L0,8 z" fill="context-stroke" />
+            </marker>
+          </defs>
+          <text x="0" y="16" font-size="13" font-weight="700" fill="#d1242f">Until now — [the old approach]</text>
+          <rect x="80" y="34" width="160" height="48" rx="8" fill="#f4f6f9" stroke="#b9c2cf" />
+          <text x="160" y="54" font-size="13" font-weight="700" text-anchor="middle" fill="#1f2430">[A]</text>
+          <text x="160" y="71" font-size="11" text-anchor="middle" fill="#d1242f">[the state that hurts]</text>
+          <rect x="560" y="34" width="160" height="48" rx="8" fill="#f4f6f9" stroke="#b9c2cf" />
+          <text x="640" y="54" font-size="13" font-weight="700" text-anchor="middle" fill="#1f2430">[B]</text>
+          <text x="640" y="71" font-size="11" text-anchor="middle" fill="#d1242f">[the state that hurts]</text>
+          <line x1="246" y1="58" x2="552" y2="58" stroke="#1f2430" marker-end="url(#k-arrow)" />
+          <text x="399" y="46" font-size="11" text-anchor="middle" fill="#1f2430">[exchange]</text>
+          <text x="80" y="104" font-size="11" fill="#d1242f">[what goes wrong]</text>
+
+          <line x1="0" y1="128" x2="860" y2="128" stroke="#dde2ea" />
+
+          <text x="0" y="160" font-size="13" font-weight="700" fill="#2da44e">This branch — [the new approach]</text>
+          <rect x="40" y="184" width="150" height="48" rx="8" fill="#eaf1fe" stroke="#2563eb" />
+          <text x="115" y="204" font-size="13" font-weight="700" text-anchor="middle" fill="#1f2430">[A]</text>
+          <text x="115" y="221" font-size="11" text-anchor="middle" fill="#2563eb">[role]</text>
+          <rect x="320" y="184" width="150" height="48" rx="8" fill="#f4f6f9" stroke="#b9c2cf" />
+          <text x="395" y="204" font-size="13" font-weight="700" text-anchor="middle" fill="#1f2430">[B]</text>
+          <text x="395" y="221" font-size="11" text-anchor="middle" fill="#5b6472">[role]</text>
+          <rect x="620" y="184" width="150" height="48" rx="8" fill="#f4f6f9" stroke="#b9c2cf" />
+          <text x="695" y="204" font-size="13" font-weight="700" text-anchor="middle" fill="#1f2430">[C]</text>
+          <text x="695" y="221" font-size="11" text-anchor="middle" fill="#2da44e">[role]</text>
+          <line x1="196" y1="208" x2="312" y2="208" stroke="#1f2430" marker-end="url(#k-arrow)" />
+          <text x="254" y="196" font-size="11" text-anchor="middle" fill="#1f2430">[exchange]</text>
+          <line x1="476" y1="208" x2="612" y2="208" stroke="#1f2430" marker-end="url(#k-arrow)" />
+          <text x="544" y="196" font-size="11" text-anchor="middle" fill="#1f2430">[exchange]</text>
+          <path d="M115,236 Q400,300 686,238" fill="none" stroke="#2da44e" stroke-dasharray="5 4"
+            marker-end="url(#k-arrow)" />
+          <text x="400" y="292" font-size="11" text-anchor="middle" fill="#2da44e">[the path it takes instead]</text>
+          <text x="0" y="322" font-size="11" fill="#2da44e">[what got better]</text>
+        </svg>
+      </div>
+
+      <table style="margin-top:1.2rem">
+        <tr>
+          <th style="width:15em">Change</th>
+          <th>What it is</th>
+        </tr>
+        <tr>
+          <td><b>[change]</b><br><span style="color:var(--sub);font-size:.85rem">added / removed</span></td>
+          <td>[what it is]</td>
+        </tr>
+      </table>
+      <div class="callout"><b>[the order of steps, and anything that breaks when it is got wrong]</b></div>
+      <h3>What a person (or CI) still has to do</h3>
+      <ul class="compact">
+        <li>[the step that needs a person]</li>
+      </ul>
+    </section>
+
+    <!-- ============ Design decisions ============ -->
+    <section>
+      <h2>Design decisions</h2>
+      <div class="why">
+        <div class="why-item">
+          <b>[the decision in one line]</b>
+          <p>[why it went this way, and what was turned down if anything was]</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ How it runs: sequence diagram ============ -->
+    <section>
+      <h2>How it runs</h2>
+      <p>[one sentence of context]</p>
+      <div class="scroll">
+        <svg class="seq" viewBox="0 0 960 560" width="100%" role="img" aria-label="[what the figure shows]">
+          <defs>
+            <marker id="arrow" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto">
+              <path d="M0,0 L9,4 L0,8 z" fill="context-stroke" />
+            </marker>
+            <marker id="arrow-sub" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto">
+              <path d="M0,0 L9,4 L0,8 z" fill="context-stroke" />
+            </marker>
+          </defs>
+          <!-- Four lifelines at most; anything more belongs in a note -->
+          <rect class="sv-actor" x="40" y="20" width="120" height="38" rx="8" />
+          <text class="sv-actor-label" x="100" y="44">[A]</text>
+          <rect class="sv-actor" x="265" y="20" width="150" height="38" rx="8" />
+          <text class="sv-actor-label" x="340" y="44">[B]</text>
+          <rect class="sv-actor" x="545" y="20" width="150" height="38" rx="8" />
+          <text class="sv-actor-label" x="620" y="44">[C]</text>
+          <rect class="sv-actor" x="800" y="20" width="130" height="38" rx="8" />
+          <text class="sv-actor-label" x="865" y="44">[D]</text>
+
+          <line class="sv-life" x1="100" y1="58" x2="100" y2="500" />
+          <line class="sv-life" x1="340" y1="58" x2="340" y2="500" />
+          <line class="sv-life" x1="620" y1="58" x2="620" y2="500" />
+          <line class="sv-life" x1="865" y1="58" x2="865" y2="500" />
+
+          <!-- Outbound is sv-msg (solid), the return is sv-ret (dashed). Labels sit 7px above the line -->
+          <text class="sv-label" x="220" y="88">1. [message]</text>
+          <line class="sv-msg" x1="100" y1="95" x2="340" y2="95" />
+
+          <!-- Internal work goes in a note (never draw a self-message) -->
+          <rect class="sv-note" x="200" y="112" width="290" height="32" rx="6" />
+          <text class="sv-note-text" x="345" y="132">2. [what it does internally]</text>
+
+          <text class="sv-label" x="480" y="176">3. [message]</text>
+          <line class="sv-msg" x1="340" y1="183" x2="620" y2="183" />
+          <text class="sv-label-sub" x="480" y="212">4. [response]</text>
+          <line class="sv-ret" x1="620" y1="219" x2="340" y2="219" />
+
+          <rect class="sv-note" x="120" y="480" width="720" height="48" rx="6" />
+          <text class="sv-note-text" x="480" y="499">[what the whole figure says, line 1]</text>
+          <text class="sv-note-text" x="480" y="517">[line 2]</text>
+        </svg>
+      </div>
+      <h3>Notes on the steps</h3>
+      <ol class="steps">
+        <li><b>1-2:</b> [the detail the figure has no room for]</li>
+      </ol>
+    </section>
+
+    <!-- ============ Concurrency and races: before / after timeline ============ -->
+    <section>
+      <h2>Why [this mechanism] is needed</h2>
+      <p>[the knowledge the figure is unreadable without. Put it before the figure]</p>
+      <div class="scroll">
+        <svg class="tl" viewBox="0 0 880 400" style="min-width:700px" role="img" aria-label="[what the figure shows]">
+          <text x="0" y="16" font-size="13" font-weight="700" fill="#d1242f">[with nothing in the way]</text>
+          <text x="0" y="64" font-size="11" fill="#5b6472">[lane A]</text>
+          <line x1="95" y1="60" x2="860" y2="60" stroke="#dde2ea" stroke-width="2" />
+          <circle cx="170" cy="60" r="5" fill="#2563eb" />
+          <text x="170" y="44" font-size="11" text-anchor="middle" fill="#1f2430">[event]</text>
+          <circle cx="330" cy="60" r="5" fill="#2563eb" />
+          <text x="330" y="44" font-size="11" text-anchor="middle" fill="#1f2430">[event]</text>
+
+          <text x="0" y="134" font-size="11" fill="#5b6472">[lane B]</text>
+          <line x1="95" y1="130" x2="860" y2="130" stroke="#dde2ea" stroke-width="2" />
+          <circle cx="170" cy="130" r="5" fill="#98a2b3" />
+          <text x="170" y="150" font-size="11" text-anchor="middle" fill="#5b6472">[event]</text>
+          <circle cx="430" cy="130" r="5" fill="#d1242f" />
+          <text x="430" y="150" font-size="11" text-anchor="middle" fill="#d1242f">[the event that hurts]</text>
+
+          <rect x="560" y="72" width="300" height="46" rx="8" fill="#ffebe9" stroke="#d1242f" />
+          <text x="710" y="90" font-size="11" text-anchor="middle" fill="#1f2430">[what happens]</text>
+          <text x="710" y="108" font-size="12" text-anchor="middle" font-weight="700" fill="#d1242f">-> [outcome]</text>
+          <line x1="440" y1="122" x2="556" y2="100" stroke="#d1242f" stroke-dasharray="4 3" />
+
+          <line x1="0" y1="185" x2="880" y2="185" stroke="#dde2ea" />
+
+          <text x="0" y="218" font-size="13" font-weight="700" fill="#2da44e">As it is now</text>
+          <text x="0" y="270" font-size="11" fill="#5b6472">[lane A]</text>
+          <line x1="95" y1="266" x2="860" y2="266" stroke="#dde2ea" stroke-width="2" />
+          <circle cx="160" cy="266" r="5" fill="#2da44e" />
+          <text x="160" y="250" font-size="11" text-anchor="middle" fill="#1f2430">[event]</text>
+          <circle cx="300" cy="266" r="5" fill="#2563eb" />
+          <text x="300" y="250" font-size="11" text-anchor="middle" fill="#1f2430">[event]</text>
+
+          <text x="0" y="340" font-size="11" fill="#5b6472">[lane B]</text>
+          <line x1="95" y1="336" x2="860" y2="336" stroke="#dde2ea" stroke-width="2" />
+          <circle cx="160" cy="336" r="5" fill="#98a2b3" />
+          <text x="160" y="356" font-size="11" text-anchor="middle" fill="#5b6472">[waits]</text>
+          <line x1="168" y1="336" x2="690" y2="336" stroke="#98a2b3" stroke-dasharray="3 3" />
+          <circle cx="700" cy="336" r="5" fill="#2da44e" />
+          <text x="700" y="356" font-size="11" text-anchor="middle" fill="#1f2430">[joins]</text>
+
+          <rect x="700" y="228" width="176" height="28" rx="8" fill="#dcf5e3" stroke="#2da44e" />
+          <text x="788" y="247" font-size="11" text-anchor="middle" fill="#1f2430">[settled]</text>
+        </svg>
+      </div>
+      <ul class="compact">
+        <li><b>[the point]</b> [what it is]</li>
+      </ul>
+    </section>
+
+    <!-- ============ New libraries (only when an external package was added; never your own modules) ============ -->
+    <section>
+      <h2>New libraries</h2>
+      <table>
+        <tr>
+          <th style="width:9em">Where</th>
+          <th style="width:13em">What</th>
+          <th>Role</th>
+        </tr>
+        <tr>
+          <td><b>[app]</b></td>
+          <td><a href="[URL]"><code>[lib]</code></a></td>
+          <td>[what it is used for]</td>
+        </tr>
+      </table>
+      <p style="color:var(--sub); font-size:.9rem">[what was left to the library and what was written here]</p>
+    </section>
+
+    <footer>
+      Branch: [branch] ([commits] / [diff] / PR [number or none yet])<br>
+      docs: [path to the related documents]
+    </footer>
+
+  </main>
+</body>
+
+</html>
