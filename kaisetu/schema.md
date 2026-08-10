@@ -20,7 +20,17 @@ language the user is conversing in.
   "base": "main..HEAD + unstaged",                      // human description of the diff scope
   "plan": "plans/url-cleanup.md",                       // plan file consulted (path relative to repo root), or null. Rendered as a link served at /plan
   "repoRoot": "/Users/me/repos/myapp",                  // absolute path of the target repo (used by /kaisetu-list as the base path when reopening)
-  "stats": { "files": 107, "hunks": 268, "additions": 1468, "deletions": 812 },
+  "stats": {
+    "files": 107, "hunks": 268, "additions": 1468, "deletions": 812,
+    // optional: what the added lines are made of. Rendered as a bar + legend under the overview.
+    // Largest first. See "Writing the composition" below
+    "breakdown": [
+      { "kind": "generated", "label": "Generated (lock file, snapshots, openapi)", "files": 5, "additions": 812 },
+      { "kind": "test", "label": "Tests", "files": 24, "additions": 380 },
+      { "kind": "code", "label": "Implementation", "files": 39, "additions": 276 }
+    ],
+    "core": "The core is 4 files in the auth server, 295 lines"  // optional: one sentence
+  },
   "groups": [
     {
       "id": "g1",                       // unique ID (g1, g2, ...)
@@ -88,6 +98,23 @@ Consolidate scattered URL building and host checks into resolveAppUrl ＝ URLs a
   the page renders the outcome as "and so this happens".
 - The half-width `=` does NOT split (so `=` inside code is never caught). A line with no meaningful
   outcome can omit `＝`.
+
+## Writing the composition (stats.breakdown / stats.core)
+
+"107 files, +1468" reads as a mountain, and most of a large diff is usually lock files and generated
+snapshots. `breakdown` says how much of it is actually there to read, as a bar under the overview.
+
+- One entry per category, **largest `additions` first**. Only categories that exist in this diff —
+  never pad the list with zeros. Percentages are computed from `additions`, so leave them out
+- `kind` picks the colour and is one of `code` / `test` / `generated` / `migration` / `infra` /
+  `config` / `docs` / `other`. Hand-written code is the saturated colour, generated files the faintest
+- `label` is what the reader sees. Name the actual files when it helps
+  (`Generated (drizzle snapshots, pnpm-lock, openapi)`), and keep it to one line
+- `files` and `additions` come straight from `git diff --numstat`; they should add up to `stats`
+- `core` is one optional sentence pointing at the heart of the change — the few files that carry the
+  intent, with their line count (`The core is 4 files in the auth server, 295 lines`)
+
+The block is omitted entirely when `breakdown` is missing or empty.
 
 ## Document review mode
 
