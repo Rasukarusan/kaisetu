@@ -20,6 +20,9 @@ language the user is conversing in.
   "base": "main..HEAD + unstaged",                      // human description of the diff scope
   "plan": "plans/url-cleanup.md",                       // plan file consulted (path relative to repo root), or null. Rendered as a link served at /plan
   "repoRoot": "/Users/me/repos/myapp",                  // absolute path of the target repo (used by /kaisetu-list as the base path when reopening)
+  // How to take this diff again once the code has been fixed. See "Re-taking the diff" below
+  "scope": { "cmd": "git diff 4f2a1c9...HEAD", "cwd": "/Users/me/repos/myapp" },
+  "refreshedAt": "2026-07-25 11:04",                    // written by refresh.py; never write it by hand
   "stats": {
     "files": 107, "hunks": 268, "additions": 1468, "deletions": 812,
     // optional: what the added lines are made of. Rendered as a bar + legend under the overview.
@@ -52,6 +55,7 @@ language the user is conversing in.
               "file": "webapp/src/lib/auth.subdomain.test.ts", // path relative to repo root
               "diff": "@@ -1,10 +1,13 @@\n import Cookies from 'js-cookie';\n+import { vi } from 'vitest';\n-import { save } from './auth';",
               // ↑ first line is the @@ header, rest is the hunk body as unified diff (verbatim from git diff)
+              // "updated": true / "gone": true are set by refresh.py — never write either by hand
               "annotations": [
                 // Only where one line is unreadable without a note. One sentence, a handful per review.
                 {
@@ -98,6 +102,41 @@ Consolidate scattered URL building and host checks into resolveAppUrl ＝ URLs a
   the page renders the outcome as "and so this happens".
 - The half-width `=` does NOT split (so `=` inside code is never caught). A line with no meaningful
   outcome can omit `＝`.
+
+## Re-taking the diff (scope)
+
+The groups and the explanations stay true after a line is fixed; the hunk bodies do not. `scope`
+says how to take the diff again, so the second half can be renewed on its own:
+
+```bash
+python3 scripts/refresh.py <review-data.json>
+```
+
+It re-runs `scope.cmd`, matches the new hunks against the ones already in the review, and writes the
+new bodies back under the same IDs — the reading guide and the comment threads survive untouched.
+The running server notices the rewrite and the page reloads by itself.
+
+- `cmd` is a shell command printing a unified diff, with the base **resolved to a real revision**
+  (`git diff 4f2a1c9...HEAD`, not `git diff "$BASE"...HEAD`). It runs in `cwd`, which defaults to
+  `repoRoot`. For a review that includes uncommitted work, diff against the merge base so one
+  command covers both (`git diff $(git merge-base main HEAD)`)
+- A hunk whose body changed is marked `updated` and badged on the page. The flag is cleared by the
+  next refresh, so it always means "moved since you last looked"
+- A hunk that has left the diff is dropped, unless a comment hangs off it — then it stays marked
+  `gone`, dimmed on the page, so the thread keeps its subject. If the change comes back, so does the hunk
+- A new hunk in a file some section already covers joins that section. One in a file nobody covers
+  goes to a `g-new` group at the top of the reading order, for the agent to place and explain.
+  That group disappears once its hunks have been moved out
+- `stats.files` / `hunks` / `additions` / `deletions` are recomputed. `breakdown` and `core` are
+  prose, so they are left alone — rewrite them when a refresh really changes the composition
+- Annotations follow their line. One whose line the fix removed is dropped, having lost what it
+  explained — a note restuck to a different line reads exactly like a correct one
+- A comment moves onto the line that replaced the one it was written on. When nothing resembling
+  that line survives, the thread keeps its place in reading order but is marked on the page with
+  the line it was written on, and the result JSON carries that line as its `code`
+
+`scope` is what makes the "Refresh" button in the page header appear; without it there is
+nothing to re-run.
 
 ## Writing the composition (stats.breakdown / stats.core)
 
@@ -235,7 +274,7 @@ Comments hang off hunk IDs and line numbers, so restructuring the diff shifts th
 
 ## Result file (review-data.result.json)
 
-Written when "Finish review" is pressed. Each comment is a thread of alternating human and AI messages.
+Written when "Finish" is pressed. Each comment is a thread of alternating human and AI messages.
 
 ```jsonc
 {

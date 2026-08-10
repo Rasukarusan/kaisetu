@@ -2,10 +2,13 @@
 """kaisetu server.
 
 Serves the review page with review-data.json embedded and opens a browser.
-The page's "Finish review" button writes the result JSON. The server does not
+The page's "Finish" button writes the result JSON. The server does not
 exit; the page remains usable for viewing, further comments, and resubmission.
 review-data.json is re-read on every request, so rewriting explanations makes
 the page follow automatically.
+The page's "Refresh" button posts to /api/refresh, which re-takes the diff
+through refresh.py: the explanations and the comments stay, the hunk bodies catch
+up with the working tree, and the page reloads by itself.
 The calling agent watches for the result JSON, reads it, and kills this process
 when it is no longer needed.
 
@@ -33,6 +36,7 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import md_render
+import refresh as refresh_mod
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 MARKDOWN_SUFFIXES = (".md", ".markdown", ".mdown", ".mkd")
@@ -246,11 +250,37 @@ def main() -> None:
                 save_prefs(self._json_body())
                 self._respond()
             elif self.path == "/api/state":
+                incoming = self._json_body()
+                # A refresh moves comment anchors and bumps _rev. Until the page reloads it still
+                # holds the positions from before, and writing those back would undo the move.
+                current = 0
+                if state_path.is_file():
+                    try:
+                        saved = json.loads(state_path.read_text(encoding="utf-8"))
+                        current = int(saved.get("_rev") or 0)
+                    except (OSError, ValueError, TypeError):
+                        current = 0
+                if int(incoming.get("_rev") or 0) < current:
+                    self._respond(200, b'{"stale": true}', "application/json; charset=utf-8")
+                    return
                 state_path.write_text(
-                    json.dumps(self._json_body(), ensure_ascii=False, indent=2),
+                    json.dumps(incoming, ensure_ascii=False, indent=2),
                     encoding="utf-8",
                 )
-                self._respond()
+                self._respond(200, b'{"ok": true}', "application/json; charset=utf-8")
+            elif self.path == "/api/refresh":
+                # Re-take the diff in place: the explanations and the comments stay, the code
+                # catches up with the working tree. Rewriting the data bumps the version, so the
+                # page reloads on its own from here.
+                try:
+                    summary = refresh_mod.refresh(data_path)
+                    body = {"ok": True, **summary}
+                    print(f"refreshed: {summary['message']}", flush=True)
+                except (refresh_mod.Refused, OSError, ValueError) as e:
+                    body = {"ok": False, "error": str(e)}
+                    print(f"refresh failed: {e}", flush=True)
+                self._respond(200, json.dumps(body, ensure_ascii=False).encode("utf-8"),
+                              "application/json; charset=utf-8")
             elif self.path == "/api/finish":
                 result_path.write_text(
                     json.dumps(self._json_body(), ensure_ascii=False, indent=2),
