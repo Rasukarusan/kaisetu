@@ -57,7 +57,77 @@ There are two modes, decided by what is being reviewed:
 
 If a plan exists (`plans/*.md` etc.), read it first so you can explain the intent of the changes accurately.
 
-Organize in 3 levels: **group (unit of intent) > section (unit of explanation per feature) > hunk**.
+Organize in 3 levels: **group (unit of intent) > section (unit of explanation) > hunk**.
+
+**The page is a reading guide, not a write-up of the implementation.** A reviewer should be able to
+read every word of prose on the page in about two minutes and then go read the diff itself.
+Consolidation wins: fewer and larger units, shorter text. A faithful account of every mechanism is
+a failure mode here, not thoroughness.
+
+### Structure — keep it consolidated
+
+- **Groups: 4–7, however large the diff is.** A group is one architectural unit of intent — usually a
+  service, a layer, or a boundary — **not one mechanism**. A 100-file diff is still 4–7 groups.
+  More than 8 means you split by mechanism — merge the groups that serve the same intent.
+- **Sections: 1–3 per group.** A section holding 50 hunks is normal and fine. Split a group only when
+  it genuinely contains separate stories (e.g. "the endpoint" / "the data it reads" / "wiring and config").
+  Never make a section per file, per mechanism, or per edge case.
+- **Titles are short, plain noun phrases.** No dash joining two thoughts, no identifiers, no syntax
+  fragments: `Browser-level login table`, not `Bundling — the browser_id cookie and the browser_logins table`.
+
+### Length budgets — treat these as hard caps
+
+| Field | Budget |
+|---|---|
+| `tagline` | 1 sentence |
+| `overview` | 3–5 lines, **one point and one sentence per line** |
+| `intent` | 1–2 sentences |
+| `impact` | 1 sentence naming the areas the change reaches |
+| `explain` | 1–3 sentences |
+| `annotations[].text` | 1 sentence |
+
+If an explanation won't fit, the unit is too fine-grained — merge it, or drop the detail. Do not
+grow the text to fit the material. As calibration: in Japanese an `explain` lands around 50–90
+characters, an `intent` around 50–100, an `impact` around 30–60.
+
+### One altitude per level
+
+- `overview` — what the branch does for the product
+- group `intent` — what this part of the system now does, and why that part exists
+- section `explain` — what this bundle of hunks does, in the breath a colleague would use out loud
+- `annotations` — only where one specific line is unreadable without a note
+
+Each level answers "what / why" at its own altitude, and says something the level above didn't.
+**Never push implementation detail upward.** A section `explain` is not the place for internal step
+order, error handling, retry counts, rejected alternatives, upstream bug links, or the story of how a
+behavior was discovered. That belongs in the code and the PR description.
+
+### Plain words
+
+- Name the role, not the identifier: "the long-lived cookie that identifies the browser", not
+  "the signed `browser_id` cookie".
+- Identifiers, SQL/Redis/HTTP syntax, config keys and constant values never appear in a `title`,
+  `intent`, or `overview` line. Put a bare identifier in an `explain` only when the reader has to grep
+  for that exact name.
+- Keep one register throughout: every `explain` reads like every other one, same tense and sentence
+  shape. Uneven length and tone is what makes a page feel unorganized.
+
+Too much — one section, with five more like it in the same group:
+
+> **Deciding the bundle, and the guard that rejects error responses**
+> The after hook also runs on error responses, so it first checks statusCode and does nothing at 400 or
+> above. Past that point the endpoint itself has already verified the hint's signature, iss and aud, so
+> the hook reads sid and sub with `decodeJwt`, without checking the signature. The revocation target is
+> the union of the hint's sid and the lineages looked up in the table; with no cookie, or a bad
+> signature, it falls back to the sid alone. …
+
+Right — one section covering all of that, and its neighbours:
+
+> **End-session and bulk revocation**
+> Validates the end-session request, identifies the authentication session it points at, and deletes the
+> product sessions tied to it from Redis. Sends the browser back to an allow-listed URL afterwards.
+
+### Writing the fields
 
 - First write the `tagline`: **one sentence that anyone can read**, shown large at the top.
   No function or file names, no jargon, no `＝` — say what the change means for the product, its users,
@@ -67,6 +137,8 @@ Organize in 3 levels: **group (unit of intent) > section (unit of explanation pe
 - Then write the `overview`: 3–5 bullet points (lines starting with `- `, newline-separated) describing
   what this branch/diff does overall. Base it on the plan, PR description, and branch name; write it as
   the introduction a first-time reader sees at the very top of the review page.
+  **One point per line, one sentence per side of the `＝`** — never stack two sentences on a line, and
+  keep every line about the same length so the block reads as a set.
 - **Write each overview line as "explanation an engineer understands ＝ outcome a non-engineer
   understands"** (＝ is the full-width equals sign U+FF1D).
   The right side states *what happens as a result* in words that make sense to someone who doesn't read
@@ -74,24 +146,38 @@ Organize in 3 levels: **group (unit of intent) > section (unit of explanation pe
   Example: `Consolidate URL building and host checks into resolveAppUrl ＝ URLs are built in one place, so missed updates can no longer cause broken links`
   See "Writing the overview" in schema.md for details.
 - Group hunks by **intent** (e.g. rename + related import fixes = 1 group). Not by file.
-- Give each group an `intent` (what the change is for) and, if useful, an `impact` (blast radius).
+- Give each group an `intent`: what this part of the system now does, and why it exists. 1–2 sentences.
+- Give each group an `impact`: **one sentence naming the areas the change reaches** (which services,
+  modules, tables, or environments it spans). It is a map of the territory, not a list of what could
+  break — no failure scenarios, no "silently stops working".
 - Give each group an `importance`. This is a reading-order guide for how carefully a human should read
   it — not a verdict on the code:
   - `high`: shared/foundation code where behavior may change; data, auth, or billing
   - `medium`: wide-reaching mechanical changes; UI that contains logic changes
   - `low`: docs, tests only, trivial renames
-- Split each group into `sections` — **coherent per-feature units** — and write the explanation
-  (`explain`) at this level.
-  - Size each section so that "reading this section gives you the whole change for that feature"
-    (e.g. "New resolveAppUrl entry point", "Call-site updates", "Test updates").
-  - **Do not split by file.** Hunks from the same file may appear in multiple sections/groups
-    (hunk IDs and @@ line numbers identify each change).
-- Only where line-level notes are needed, add `annotations` to a hunk:
-  - `explain`: what the line means / why (put longer explanations in the section's explain)
+- Split each group into 1–3 `sections` and write the explanation (`explain`) at this level.
+  - A section is a **story within the group**, sized so that reading it tells you what that whole bundle
+    of hunks does. Related mechanisms, their tests, and their config belong in the same section.
+  - **Do not split by file, mechanism, or edge case.** Hunks from the same file may appear in multiple
+    sections/groups (hunk IDs and @@ line numbers identify each change).
+- Add `annotations` to a hunk **only** where a specific line is unreadable without a note — a handful
+  across the whole review, not one per hunk. One sentence each:
+  - `explain`: what this line means, when the section's explanation doesn't already cover it
   - `question`: something to confirm with the human, or a spot whose intent you couldn't determine
 - For large numbers of same-shaped mechanical changes, include a representative hunk and note
   "same pattern across N hunks" in the explain.
-- **Never critique or propose fixes.** Stick to presenting the facts: what changed, why, and the blast radius.
+- **Never critique or propose fixes.** Stick to presenting the facts: what changed and why.
+
+### Check before you write the JSON
+
+Read your own prose top to bottom and fix whatever fails:
+
+- 7 or fewer groups? 3 or fewer sections in every group?
+- Every `explain` within 3 sentences, and are they all about the same length?
+- Any identifier, syntax fragment, or constant in a `title`, `intent`, or `overview` line?
+- Any sentence explaining *how* the code is written rather than what it does — step order, error
+  handling, why an alternative was rejected? Cut it.
+- Does the whole page read in one voice, at a steady altitude?
 
 ## 3–4. Generate and launch the UI
 
