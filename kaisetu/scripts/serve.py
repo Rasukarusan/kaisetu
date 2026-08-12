@@ -18,7 +18,7 @@ human comments on element by element. Markdown is rendered to HTML on the way
 out; an HTML file is served as it is. Rewriting the file bumps the version, so
 the page reloads with the fixed document.
 
-Each file header has a "file" link, which opens /file in a new tab: the whole file as it stands in
+Each file header has a "View" link, which opens /file in a new tab: the whole file as it stands in
 the working tree. Code is highlighted with the hunk's lines marked; a Markdown or HTML file is
 rendered as the document it is, with a "Source" button for the code behind it.
 
@@ -58,7 +58,7 @@ PREFS_PATH = pathlib.Path.home() / ".kaisetu" / "prefs.json"
 
 PLACEHOLDERS = ("__REVIEW_DATA__", "__REVIEW_STATE__", "__REVIEW_VERSION__", "__REVIEW_PREFS__")
 
-# How much of a file the "file" button will render. Past this the reader is looking at a generated
+# How much of a file the "View" link will render. Past this the reader is looking at a generated
 # blob, not the code around the change — it is cut, and the page says so (and offers the raw file).
 FILE_VIEW_MAX_LINES = 20000
 
