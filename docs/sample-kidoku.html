@@ -814,11 +814,6 @@ body.mode-explain .doc-toolbar a.mini-btn { display: inline-block; text-decorati
 }
 .pin.done { background: var(--card); color: var(--green); border-color: var(--green); }
 .pin.current { box-shadow: 0 0 0 3px var(--blue-bg), 0 1px 5px rgba(20, 24, 33, .35); }
-.pick-hint {
-  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
-  background: var(--tip-bg); color: var(--tip-ink); border-radius: 8px; padding: 6px 12px;
-  font-size: 12px; opacity: .88; pointer-events: none;
-}
 .threadcol {
   width: 380px; max-width: 46vw; flex: none;
   display: flex; flex-direction: column;
@@ -1006,7 +1001,6 @@ function savePrefs(update) {
         <div class="hl" id="hl"><span class="tag"></span></div>
         <button class="addbtn" id="addbtn" hidden title="Comment on this">+</button>
       </div>
-      <div class="pick-hint" id="pick-hint">Hover a paragraph and press the + to comment on it</div>
     </div>
   </div>
   <aside class="threadcol" id="threadcol">
@@ -2581,7 +2575,6 @@ function initDocMode(src, inline) {
   preview.classList.toggle("picking", pick.checked);
   pick.addEventListener("change", () => {
     preview.classList.toggle("picking", pick.checked);
-    document.getElementById("pick-hint").hidden = !pick.checked;
     layoutPins();   // pins and the + come back when commenting resumes
     layoutAddBtn();
   });
@@ -2748,7 +2741,6 @@ function localizeChrome() {
   ttl("#explain-open", "解説だけを別タブで開く");
   txt("#page-comment-btn", "＋ ドキュメント全体にコメント");
   ttl("#page-comment-btn", "ひとつの要素ではなく、ドキュメント全体についてコメントする");
-  txt("#pick-hint", "気になる行にカーソルを合わせ、左に出る + でコメントできます");
   ttl("#target-frame", "レビュー対象のドキュメント");
   ttl("#addbtn", "ここにコメントする");
   txt("#update-bar span", "解説が書き直されました");
