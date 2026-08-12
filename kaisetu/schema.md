@@ -350,6 +350,12 @@ Written when "Finish" is pressed. Each comment is a thread of alternating human 
 - Hunks render side by side by default (old left, new right); deletions line up with the additions that
   replaced them. The header's "Split" toggle switches to the unified view and is remembered per browser.
   Comments are keyed by hunk ID and row index in both layouts, so switching never moves them.
+- **Consecutive hunks of the same file in a section are drawn as one file**: the path is named once and
+  the hunks follow each other, each opening on a thin seam line with its ID and range. So **keep a
+  file's hunks together and in line order within a section** — interleaving files splits one file into
+  several boxes on screen, which reads as several files.
+- Every file header carries a "file" button: the whole file as it stands in the working tree, in an
+  overlay scrolled to that change (served from `/file`; absent in the static build, which has no repo).
 - A section's `explain` is shown as an "AI explanation" callout at the top of the section's first hunk.
 - Groups containing `type: "question"` annotations get a "question" badge in the index.
 - Human comments are saved to localStorage and to the server's state.json. The localStorage key is
