@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The page behind a file header's "file" link: one whole file, on its own.
+"""The page behind a file header's "View" link: one whole file, on its own.
 
 A hunk is a few lines cut out of a file, and the question it most often raises is what surrounds
 them. This is the file as it stands in the working tree, as a standalone page that opens in its own

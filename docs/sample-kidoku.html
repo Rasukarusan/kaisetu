@@ -1024,7 +1024,7 @@ function savePrefs(update) {
     <table>
       <tr class="diff-only"><td class="key">click</td><td>Hover a diff line, the overview, an intent, or an AI note — press the + to comment</td></tr>
       <tr class="diff-only"><td class="key">copy</td><td>The button next to a file name copies its path</td></tr>
-      <tr class="diff-only"><td class="key">file</td><td>The link at the right of a file header opens the whole file in a new tab: code highlighted and opened at the change, a Markdown or HTML file rendered as the document — "Source" then shows the code behind it</td></tr>
+      <tr class="diff-only"><td class="key">View</td><td>The link at the right of a file header opens the whole file in a new tab: code highlighted and opened at the change, a Markdown or HTML file rendered as the document — "Source" then shows the code behind it</td></tr>
       <tr class="diff-only"><td class="key">j / k</td><td>Jump to the next / previous group</td></tr>
       <tr class="diff-only"><td class="key">Refresh</td><td>Take the diff again once the code has been fixed — the groups, the explanations and your comments all stay, and every hunk that moved is badged "updated"</td></tr>
       <tr class="diff-only"><td class="key">Split</td><td>Side-by-side (old left, new right) or unified — drag the boundary between the sides to resize it, double-click to reset. The choice is remembered</td></tr>
@@ -1592,7 +1592,7 @@ function renderGroups() {
       <span class="range">${merged ? esc(nOf(run.length, "hunks", "hunk")) : esc(range(run[0]))}</span>` +
       (merged ? "" : badge(run[0])) +
       `<a class="view-file" href="${fileHref(file, at[1] || 0, at[2] ?? 1)}" target="_blank" rel="noopener"
-        title="${L("Open the whole file in a new tab")}">file</a>`;
+        title="${L("Open the whole file in a new tab")}">View</a>`;
     hh.addEventListener("click", e => {
       if (e.target.closest("button, a")) return;
       sec.classList.toggle("collapsed");
@@ -2102,8 +2102,10 @@ syncTopbarH();
 /* A hunk is a few lines cut out of a file, and the question it most often raises is what surrounds
    them. Every file header links to the file itself — its own page, in its own tab, highlighted and
    opened at the change — so it can be kept open beside the review. */
-const fileHref = (path, start, count) =>
-  `/file?path=${encodeURIComponent(path)}&start=${start}&count=${count}` + (start ? `#L${start}` : "");
+/* renderGroups() runs before this point, so this has to hoist (a const would be in its TDZ). */
+function fileHref(path, start, count) {
+  return `/file?path=${encodeURIComponent(path)}&start=${start}&count=${count}` + (start ? `#L${start}` : "");
+}
 
 /* ---------- events ---------- */
 document.addEventListener("click", e => {
@@ -2760,7 +2762,7 @@ function localizeChrome() {
     <table>
       <tr class="diff-only"><td class="key">クリック</td><td>差分の行・概要・意図・解説にカーソルを合わせ、出てくる + でコメントする</td></tr>
       <tr class="diff-only"><td class="key">コピー</td><td>ファイル名の隣のボタンでそのパスをコピーする</td></tr>
-      <tr class="diff-only"><td class="key">file</td><td>ファイル見出しの右端から、そのファイル全体を別タブで開く。コードはハイライト付きで変更箇所の位置、Markdown / HTML は描画された状態で出る（「Source」でその中身のコード）</td></tr>
+      <tr class="diff-only"><td class="key">View</td><td>ファイル見出しの右端から、そのファイル全体を別タブで開く。コードはハイライト付きで変更箇所の位置、Markdown / HTML は描画された状態で出る（「Source」でその中身のコード）</td></tr>
       <tr class="diff-only"><td class="key">j / k</td><td>次 / 前のグループへ移動</td></tr>
       <tr class="diff-only"><td class="key">左右に分割</td><td>左右に並べる（左が変更前・右が変更後）か1列にするかの切替。境界はドラッグで動かせる（ダブルクリックで中央に戻る）。選んだ状態は記憶される</td></tr>
       <tr class="explain-help"><td class="key">Explain</td><td>このブランチの内容をチームに説明する 1 枚の HTML。差分と同じように行ごとにコメントできる。「Open ↗」「Copy file path」でこのページの外に持ち出せる</td></tr>
