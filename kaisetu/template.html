@@ -263,6 +263,8 @@ button { font-family: inherit; }
 @keyframes vt-pulse { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
 body:not(.mode-explain) .explain-only { display: none; }
 body:not(.has-explain) .explain-help { display: none; }
+/* Static build (--build): there is no server to read the repository, so the button is not offered */
+body.no-server .view-file { display: none; }
 body.hide-tests :is(.hunk.is-test, .section-head.is-test, .ft-file.is-test,
   .group.is-test, .index-card.is-test) { display: none; }
 
@@ -528,14 +530,68 @@ main { max-width: 1060px; margin: 0 auto; padding: 28px 24px 64px; }
 }
 .hunk-head:hover .copy-path, .ft-file:hover .copy-path { opacity: 1; }
 .copy-path:hover { color: var(--blue); border-color: var(--blue); }
+/* A hunk is a window; this opens the wall it was cut out of. Always visible, at the far right of
+   the header, so "what surrounds this?" is one click from every change. */
+.view-file {
+  margin-left: auto; flex: none;
+  font-family: var(--mono); font-size: 10.5px; line-height: 1;
+  padding: 3px 8px; border-radius: 5px; cursor: pointer;
+  border: 1px solid var(--border-strong); background: var(--card); color: var(--ink-soft);
+}
+.view-file:hover { color: var(--blue); border-color: var(--blue); }
+
+/* ---------- whole-file view ---------- */
+.fv-overlay {
+  position: fixed; inset: 0; z-index: 110;
+  background: rgba(24, 27, 33, .45); backdrop-filter: blur(3px);
+  display: none; align-items: center; justify-content: center; padding: 28px;
+}
+.fv-overlay.show { display: flex; }
+.fv-panel {
+  background: var(--card); border-radius: 14px; box-shadow: 0 20px 60px rgba(20, 24, 33, .3);
+  width: min(1100px, 100%); height: min(88vh, 100%);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.fv-head {
+  flex: none; display: flex; align-items: center; gap: 10px;
+  padding: 11px 16px; border-bottom: 1px solid var(--border); background: var(--surface-2);
+  font-family: var(--mono); font-size: 12.5px;
+}
+.fv-head .path { font-weight: 700; color: var(--ink); word-break: break-all; }
+.fv-head .count { color: var(--ink-faint); white-space: nowrap; }
+.fv-head .fv-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: none; }
+.fv-head a.mini-btn { display: inline-block; text-decoration: none; }
+.fv-body { flex: 1; min-height: 0; overflow: auto; background: var(--card); }
+.fv-body table { border-collapse: collapse; width: 100%; font-family: var(--mono); font-size: 12.5px; }
+.fv-body td { padding: 0 10px; vertical-align: top; white-space: pre; }
+.fv-body td.n {
+  width: 1%; text-align: right; user-select: none;
+  color: var(--ink-faint); background: var(--surface-3); border-right: 1px solid var(--border);
+  position: sticky; left: 0;
+}
+.fv-body td.c { width: 100%; color: var(--ink); }
+/* The lines the hunk was showing, so the reader lands on them and can see out from there */
+.fv-body tr.here td.c { background: var(--row-hover); }
+.fv-body tr.here td.n { background: var(--blue-bg); color: var(--blue-ink); font-weight: 700; }
+.fv-note { padding: 10px 16px; font-size: 12px; color: var(--ink-soft); border-top: 1px solid var(--border); }
 .hunk-head .range { color: var(--ink-faint); }
+/* Where the next hunk of the same file picks up. One line high, and quiet: it is a seam in one
+   file, not the start of another. */
+.hunk tr.hsep td {
+  padding: 4px 20px;
+  background: var(--surface-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  font-family: var(--mono); font-size: 11px; color: var(--ink-faint);
+}
+.hunk tr.hsep:first-child td { border-top: none; }
+.hunk tr.hsep .hid { margin-right: 10px; }
+.hunk tr.hsep .upd { margin-left: 10px; }
 /* What moved since the diff was last taken, so a re-read goes straight to the fixes */
 .hunk-head .upd {
   margin-left: auto; flex: none; font-size: 10.5px; font-weight: 700; letter-spacing: .03em;
   padding: 2px 8px; border-radius: 999px; background: var(--blue); color: #fff;
 }
 .hunk-head .upd.gone { background: var(--surface-3); color: var(--ink-faint); border: 1px solid var(--border-strong); }
-.hunk.gone table.diff { opacity: .45; }
+.hunk table.diff tbody.gone { opacity: .45; }
 table.diff { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12.5px; line-height: 1.75; }
 table.diff td { padding: 0; vertical-align: top; }
 td.ln {
@@ -1002,6 +1058,7 @@ function savePrefs(update) {
     <table>
       <tr class="diff-only"><td class="key">click</td><td>Hover a diff line, the overview, an intent, or an AI note — press the + to comment</td></tr>
       <tr class="diff-only"><td class="key">copy</td><td>The button next to a file name copies its path</td></tr>
+      <tr class="diff-only"><td class="key">file</td><td>The button at the right of a file header opens the whole file as it stands now, scrolled to the change — "Raw ↗" opens it on its own</td></tr>
       <tr class="diff-only"><td class="key">j / k</td><td>Jump to the next / previous group</td></tr>
       <tr class="diff-only"><td class="key">Refresh</td><td>Take the diff again once the code has been fixed — the groups, the explanations and your comments all stay, and every hunk that moved is badged "updated"</td></tr>
       <tr class="diff-only"><td class="key">Split</td><td>Side-by-side (old left, new right) or unified — drag the boundary between the sides to resize it, double-click to reset. The choice is remembered</td></tr>
@@ -1040,6 +1097,23 @@ function savePrefs(update) {
   <button class="mini-btn" id="update-apply">Apply to page</button>
 </div>
 
+<!-- The whole file behind a hunk, opened from the "file" button in its header -->
+<div class="fv-overlay" id="fileview">
+  <div class="fv-panel">
+    <div class="fv-head">
+      <span class="path" id="fv-path"></span>
+      <span class="count" id="fv-count"></span>
+      <span class="fv-actions">
+        <button class="mini-btn" id="fv-copy">Copy path</button>
+        <a class="mini-btn" id="fv-raw" target="_blank" rel="noopener">Raw ↗</a>
+        <button class="mini-btn" id="fv-close">Close</button>
+      </span>
+    </div>
+    <div class="fv-body" id="fv-body"></div>
+    <div class="fv-note" id="fv-note" hidden></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script id="review-data" type="application/json">__REVIEW_DATA__</script>
@@ -1061,6 +1135,7 @@ if (DOC_MODE) document.body.classList.add("mode-doc");
    review opens, so the tab starts pending and lights up when the file lands. */
 const HAS_EXPLAIN = !DOC_MODE && !!(DATA.explain || DATA.explainInline);
 if (HAS_EXPLAIN) document.body.classList.add("has-explain");
+if (!SERVER) document.body.classList.add("no-server");
 /* Which of the two the middle of the page is showing right now */
 const docViewActive = () => document.body.classList.contains("mode-doc");
 /* The iframe machinery — rows, anchors, pins — is set up at the bottom of this script, and the
@@ -1109,6 +1184,12 @@ const JA = {
   "Refresh failed": "Refresh できませんでした",
   "Written on a line the diff no longer has": "この指摘を書いた行は差分から無くなりました",
   "Nothing to copy": "コピーするものがありません",
+  "Open the whole file": "ファイル全体を開く",
+  "Loading…": "読み込み中…",
+  "This file is not text": "テキストファイルではありません",
+  "Not in the working tree — it may have been deleted or renamed":
+    "作業ツリーにありません（削除・リネームされた可能性があります）",
+  "The whole file needs the review server": "ファイル全体の表示にはレビューサーバが要ります",
   "The write-up is ready — see the Explain tab": "解説ができました — Explain タブで読めます",
   "The write-up for the team — comment on it the same way":
     "チームに渡す解説。差分と同じようにコメントできます",
@@ -1536,27 +1617,38 @@ function renderGroups() {
     }
 
   let pendingExplain = s.explain; // section explanations render as a callout at the top of the first hunk
+  /* Consecutive hunks from the same file are drawn as one file, not as several. Three headers for
+     three windows into one file reads as three files; here the file is named once and its hunks
+     follow each other, each starting on a thin line that says where in the file it picks up. */
+  const runs = [];
   for (const h of s.hunks || []) {
-    const parsed = parseHunk(h.diff || "");
-    const anchors = new Map(); // rowIndex -> [ann,...]
-    for (const a of h.annotations || []) {
-      const i = resolveAnchor(parsed.rows, a);
-      if (!anchors.has(i)) anchors.set(i, []);
-      anchors.get(i).push(a);
-    }
+    const last = runs[runs.length - 1];
+    if (last && last[0].file === h.file) last.push(h);
+    else runs.push([h]);
+  }
+  for (const run of runs) {
+    const file = run[0].file;
+    const merged = run.length > 1;
+    const range = h => (parseHunk(h.diff || "").header || "").replace(/^@@ | @@.*$/g, "");
+    const badge = h => h.gone ? `<span class="upd gone">${L("no longer in the diff")}</span>`
+      : h.updated ? `<span class="upd">${L("updated")}</span>` : "";
 
     const sec = document.createElement("section");
-    sec.className = "hunk" + (isTestFile(h.file) ? " is-test" : "") + (h.gone ? " gone" : "");
-    sec.id = "hunk-" + h.id;
+    sec.className = "hunk" + (isTestFile(file) ? " is-test" : "");
+    sec.id = "hunk-" + run[0].id;
     const hh = document.createElement("div");
     hh.className = "hunk-head";
     hh.title = "Click to collapse";
-    /* Set by the last refresh: this hunk moved, or the change it showed is no longer in the diff */
-    const mark = h.gone ? `<span class="upd gone">${L("no longer in the diff")}</span>`
-      : h.updated ? `<span class="upd">${L("updated")}</span>` : "";
-    hh.innerHTML = `<span class="caret">▼</span><span class="hid">${esc(h.id)}</span><span class="file">${esc(h.file)}</span>
-      <button class="copy-path" data-copy="${esc(h.file)}" title="${L('Copy path')}">${L("copy")}</button>
-      <span class="range">${esc((parsed.header || "").replace(/^@@ | @@.*$/g, m2 => m2 === "@@ " ? "" : ""))}</span>${mark}`;
+    // Where the file view lands: the first change in this file, whichever hunk holds it
+    const at = /\+(\d+)(?:,(\d+))?/.exec(parseHunk(run[0].diff || "").header || "") || [];
+    hh.innerHTML = `<span class="caret">▼</span>` +
+      (merged ? "" : `<span class="hid">${esc(run[0].id)}</span>`) +
+      `<span class="file">${esc(file)}</span>
+      <button class="copy-path" data-copy="${esc(file)}" title="${L('Copy path')}">${L("copy")}</button>
+      <span class="range">${merged ? esc(nOf(run.length, "hunks", "hunk")) : esc(range(run[0]))}</span>` +
+      (merged ? "" : badge(run[0])) +
+      `<button class="view-file" data-file="${esc(file)}" data-start="${at[1] || 0}" data-count="${at[2] ?? 1}"
+        title="${L("Open the whole file")}">file</button>`;
     hh.addEventListener("click", e => {
       if (e.target.closest("button")) return;
       sec.classList.toggle("collapsed");
@@ -1565,7 +1657,20 @@ function renderGroups() {
 
     const table = document.createElement("table");
     table.className = "diff";
+    sec.appendChild(table);
+
+  for (const h of run) {
+    const parsed = parseHunk(h.diff || "");
+    const anchors = new Map(); // rowIndex -> [ann,...]
+    for (const a of h.annotations || []) {
+      const i = resolveAnchor(parsed.rows, a);
+      if (!anchors.has(i)) anchors.set(i, []);
+      anchors.get(i).push(a);
+    }
+
     const tbody = document.createElement("tbody");
+    if (h.gone) tbody.classList.add("gone");
+    if (h !== run[0]) tbody.id = "hunk-" + h.id;   // the box already carries the first hunk's anchor
     /* Rows spanning both sides: AI notes, questions, and the comment threads themselves */
     const wideRow = (html, cls = "annotation") => {
       const tr = document.createElement("tr");
@@ -1602,6 +1707,11 @@ function renderGroups() {
     const cbtnHtml = (key, side) => `<button class="cbtn" title="${esc(L("Comment on this line"))}"
       data-act="new" data-kind="line" data-key="${esc(key)}"${side ? ` data-side="${side}"` : ""}>+</button>`;
 
+    /* In a merged file, each hunk opens with the line it picks up at — quiet, one line high */
+    if (merged) {
+      const sep = wideRow(`<span class="hid">${esc(h.id)}</span><span class="range">${esc(range(h))}</span>${badge(h)}`, "hsep");
+      tbody.appendChild(sep);
+    }
     if (pendingExplain) {
       tbody.appendChild(wideRow(`<div class="callout explain prose-target">
         <span class="label">${L("AI note")}</span><span>${esc(pendingExplain)}</span>
@@ -1664,7 +1774,7 @@ function renderGroups() {
         .sort((a, b) => +a.split(":").pop() - +b.split(":").pop()))
       tbody.appendChild(slotRow(key, null));
     table.appendChild(tbody);
-    sec.appendChild(table);
+  }
     art.appendChild(sec);
   }
   });
@@ -2044,8 +2154,71 @@ const syncTopbarH = () =>
 new ResizeObserver(syncTopbarH).observe(topbarEl);
 syncTopbarH();
 
+/* ---------- whole-file view ---------- */
+/* A hunk is a few lines cut out of a file, and the question it most often raises is what was around
+   them. The "file" button in every hunk header opens the file as it stands in the working tree,
+   scrolled to those lines and with them marked, so the reader can see out from the change. */
+const fvOverlay = document.getElementById("fileview");
+let fvPath = null;
+
+function closeFileView() {
+  fvOverlay.classList.remove("show");
+  document.getElementById("fv-body").innerHTML = "";
+  fvPath = null;
+}
+
+async function openFileView(path, start, count) {
+  fvPath = path;
+  fvOverlay.classList.add("show");
+  document.getElementById("fv-path").textContent = path;
+  document.getElementById("fv-count").textContent = "";
+  document.getElementById("fv-note").hidden = true;
+  document.getElementById("fv-raw").href = "/file?raw=1&path=" + encodeURIComponent(path);
+  const body = document.getElementById("fv-body");
+  body.innerHTML = `<div class="fv-note">${L("Loading…")}</div>`;
+  if (!SERVER) {   // static build: there is no repo to read from
+    body.innerHTML = `<div class="fv-note">${L("The whole file needs the review server")}</div>`;
+    return;
+  }
+  let data;
+  try {
+    const res = await fetch("/file?path=" + encodeURIComponent(path));
+    if (!res.ok) throw new Error(res.status === 415 ? L("This file is not text")
+      : L("Not in the working tree — it may have been deleted or renamed"));
+    data = await res.json();
+  } catch (err) {
+    body.innerHTML = `<div class="fv-note">${esc(err.message || String(err))}</div>`;
+    return;
+  }
+  if (fvPath !== path) return;   // another file was opened while this one loaded
+  const lines = data.text.split("\n");
+  const from = +start || 0, to = from + (+count || 1) - 1;
+  document.getElementById("fv-count").textContent = nOf(data.truncated || lines.length, "lines", "行");
+  body.innerHTML = `<table><tbody>${lines.map((line, i) => {
+    const n = i + 1;
+    return `<tr${n >= from && n <= to ? ' class="here"' : ""}><td class="n">${n}</td><td class="c">${esc(line) || "&nbsp;"}</td></tr>`;
+  }).join("")}</tbody></table>`;
+  if (data.truncated) {
+    const note = document.getElementById("fv-note");
+    note.hidden = false;
+    note.textContent = LANG === "ja"
+      ? `長いので先頭 ${lines.length} 行だけ表示しています（全 ${data.truncated} 行）。全文は「Raw ↗」で開けます。`
+      : `Showing the first ${lines.length} of ${data.truncated} lines. "Raw ↗" opens the whole file.`;
+  }
+  // Land on the change itself, with room above it to read what leads in
+  body.querySelector("tr.here")?.scrollIntoView({ block: "center" });
+}
+
+document.getElementById("fv-close").addEventListener("click", closeFileView);
+document.getElementById("fv-copy").addEventListener("click", () => {
+  if (fvPath) copyText(fvPath, L("Copied: ") + fvPath);
+});
+fvOverlay.addEventListener("click", e => { if (e.target === fvOverlay) closeFileView(); });
+
 /* ---------- events ---------- */
 document.addEventListener("click", e => {
+  const vf = e.target.closest(".view-file");
+  if (vf) { openFileView(vf.dataset.file, vf.dataset.start, vf.dataset.count); return; }
   const cp = e.target.closest("[data-copy]");
   if (cp) { copyText(cp.dataset.copy, L("Copied: ") + cp.dataset.copy); return; }
   const ftName = e.target.closest(".ft-dir > .ft-name");
@@ -2210,6 +2383,7 @@ document.addEventListener("keydown", e => {
     e.target.closest(".comment-editor").querySelector('[data-act="cancel"]')?.click();
     return;
   }
+  if (e.key === "Escape" && fvOverlay.classList.contains("show")) { closeFileView(); return; }
   if (e.key === "Escape") { toggleComments(false); return; }
   if (e.target.matches("textarea, input") || e.metaKey || e.ctrlKey) return;
   if (e.key === "j" || e.key === "k") {
@@ -2699,6 +2873,7 @@ function localizeChrome() {
     <table>
       <tr class="diff-only"><td class="key">クリック</td><td>差分の行・概要・意図・解説にカーソルを合わせ、出てくる + でコメントする</td></tr>
       <tr class="diff-only"><td class="key">コピー</td><td>ファイル名の隣のボタンでそのパスをコピーする</td></tr>
+      <tr class="diff-only"><td class="key">file</td><td>ファイル見出しの右端のボタンで、そのファイル全体を今の状態で開く（変更箇所までスクロールした状態。「Raw ↗」で単体表示）</td></tr>
       <tr class="diff-only"><td class="key">j / k</td><td>次 / 前のグループへ移動</td></tr>
       <tr class="diff-only"><td class="key">左右に分割</td><td>左右に並べる（左が変更前・右が変更後）か1列にするかの切替。境界はドラッグで動かせる（ダブルクリックで中央に戻る）。選んだ状態は記憶される</td></tr>
       <tr class="explain-help"><td class="key">Explain</td><td>このブランチの内容をチームに説明する 1 枚の HTML。差分と同じように行ごとにコメントできる。「Open ↗」「Copy file path」でこのページの外に持ち出せる</td></tr>

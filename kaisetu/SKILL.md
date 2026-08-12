@@ -218,6 +218,8 @@ Right — one section covering all of that, and its neighbours:
     of hunks does. Related mechanisms, their tests, and their config belong in the same section.
   - **Do not split by file, mechanism, or edge case.** Hunks from the same file may appear in multiple
     sections/groups (hunk IDs and @@ line numbers identify each change).
+  - **Within a section, keep one file's hunks together and in line order.** The page draws consecutive
+    hunks of the same file as one file; interleaving two files turns each into several boxes.
 - Add `annotations` to a hunk **only** where a specific line is unreadable without a note — a handful
   across the whole review, not one per hunk. One sentence each:
   - `explain`: what this line means, when the section's explanation doesn't already cover it

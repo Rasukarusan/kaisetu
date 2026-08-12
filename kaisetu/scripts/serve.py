@@ -18,6 +18,9 @@ human comments on element by element. Markdown is rendered to HTML on the way
 out; an HTML file is served as it is. Rewriting the file bumps the version, so
 the page reloads with the fixed document.
 
+Each hunk header has a "file" button, served from /file: the whole file as it stands in the
+working tree, so the lines around a change can be read without leaving the review.
+
 An `explain` field points at the shareable write-up of the same branch. It is served
 at /explain and reached from the page's Explain tab, in the same iframe and with the
 same element-by-element commenting. It may be named before it exists: the page shows
@@ -52,6 +55,10 @@ MARKDOWN_SUFFIXES = (".md", ".markdown", ".mdown", ".mkd")
 PREFS_PATH = pathlib.Path.home() / ".kaisetu" / "prefs.json"
 
 PLACEHOLDERS = ("__REVIEW_DATA__", "__REVIEW_STATE__", "__REVIEW_VERSION__", "__REVIEW_PREFS__")
+
+# How much of a file the "file" button on a hunk header will hand over. Past this the reader is
+# reading a generated blob, not the code around the change — it is cut, and the page says so.
+FILE_VIEW_MAX_LINES = 20000
 
 
 def load_prefs() -> dict:
@@ -260,6 +267,35 @@ def main() -> None:
                     self._respond(200, found.read_text(encoding="utf-8").encode("utf-8"))
                 else:
                     self._respond(404, f"plan not found: {plan}".encode("utf-8"))
+            elif path == "/file":
+                # A whole file from the target repo, for the "file" button on a hunk header: a hunk
+                # shows the lines that changed, and sometimes the question is what surrounds them.
+                query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                rel = (query.get("path") or [""])[0]
+                raw = (query.get("raw") or ["0"])[0] == "1"
+                data = load_data()
+                base = pathlib.Path(data.get("repoRoot") or pathlib.Path.cwd()).resolve()
+                target = (base / rel).resolve() if rel else None
+                if not rel or not target.is_relative_to(base) or not target.is_file():
+                    self._respond(404, f"file not found: {rel}".encode("utf-8"))
+                    return
+                blob = target.read_bytes()
+                if b"\0" in blob[:8000]:
+                    self._respond(415, b"binary file")
+                    return
+                text = blob.decode("utf-8", errors="replace")
+                if raw:
+                    self._respond(200, text.encode("utf-8"), "text/plain; charset=utf-8")
+                    return
+                # A file too long to hand the page whole is cut, and says by how much
+                lines = text.split("\n")
+                total = len(lines)
+                truncated = total if total > FILE_VIEW_MAX_LINES else 0
+                if truncated:
+                    text = "\n".join(lines[:FILE_VIEW_MAX_LINES])
+                body = json.dumps({"path": rel, "text": text, "truncated": truncated},
+                                  ensure_ascii=False).encode("utf-8")
+                self._respond(200, body, "application/json; charset=utf-8")
             elif path == "/explain":
                 # The shareable write-up, shown in the page's Explain tab and openable on its own
                 ref = load_data().get("explain")
