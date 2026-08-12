@@ -18,8 +18,9 @@ human comments on element by element. Markdown is rendered to HTML on the way
 out; an HTML file is served as it is. Rewriting the file bumps the version, so
 the page reloads with the fixed document.
 
-Each hunk header has a "file" button, served from /file: the whole file as it stands in the
-working tree, so the lines around a change can be read without leaving the review.
+Each file header has a "file" link, which opens /file in a new tab: the whole file as it stands in
+the working tree. Code is highlighted with the hunk's lines marked; a Markdown or HTML file is
+rendered as the document it is, with a "Source" button for the code behind it.
 
 An `explain` field points at the shareable write-up of the same branch. It is served
 at /explain and reached from the page's Explain tab, in the same iframe and with the
@@ -43,6 +44,7 @@ import urllib.parse
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import file_page
 import md_render
 import refresh as refresh_mod
 
@@ -56,8 +58,8 @@ PREFS_PATH = pathlib.Path.home() / ".kaisetu" / "prefs.json"
 
 PLACEHOLDERS = ("__REVIEW_DATA__", "__REVIEW_STATE__", "__REVIEW_VERSION__", "__REVIEW_PREFS__")
 
-# How much of a file the "file" button on a hunk header will hand over. Past this the reader is
-# reading a generated blob, not the code around the change — it is cut, and the page says so.
+# How much of a file the "file" button will render. Past this the reader is looking at a generated
+# blob, not the code around the change — it is cut, and the page says so (and offers the raw file).
 FILE_VIEW_MAX_LINES = 20000
 
 
@@ -268,34 +270,54 @@ def main() -> None:
                 else:
                     self._respond(404, f"plan not found: {plan}".encode("utf-8"))
             elif path == "/file":
-                # A whole file from the target repo, for the "file" button on a hunk header: a hunk
-                # shows the lines that changed, and sometimes the question is what surrounds them.
+                # A whole file from the target repo, opened in its own tab from a file header.
+                # Code arrives highlighted with `start`/`count` marked; a Markdown or HTML file
+                # arrives rendered, with `src=1` for the code behind it. `raw=1` is the plain text.
                 query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
                 rel = (query.get("path") or [""])[0]
-                raw = (query.get("raw") or ["0"])[0] == "1"
+                flag = lambda k: (query.get(k) or ["0"])[0] == "1"
+                as_int = lambda k: int((query.get(k) or ["0"])[0]) if (query.get(k) or ["0"])[0].isdigit() else 0
                 data = load_data()
                 base = pathlib.Path(data.get("repoRoot") or pathlib.Path.cwd()).resolve()
                 target = (base / rel).resolve() if rel else None
                 if not rel or not target.is_relative_to(base) or not target.is_file():
-                    self._respond(404, f"file not found: {rel}".encode("utf-8"))
+                    self._respond(404, f"file not found: {rel}".encode("utf-8"),
+                                  "text/plain; charset=utf-8")
                     return
                 blob = target.read_bytes()
                 if b"\0" in blob[:8000]:
-                    self._respond(415, b"binary file")
+                    self._respond(415, b"not a text file", "text/plain; charset=utf-8")
                     return
                 text = blob.decode("utf-8", errors="replace")
-                if raw:
+                if flag("raw"):
                     self._respond(200, text.encode("utf-8"), "text/plain; charset=utf-8")
                     return
-                # A file too long to hand the page whole is cut, and says by how much
+
+                q = urllib.parse.quote(rel, safe="")
+                start, count = as_int("start"), as_int("count")
+                at = f"&start={start}&count={count}" if start else ""
+                theme = load_prefs().get("theme", "")
+                # A document is shown as the document. `doc=1` is the render itself, inside the
+                # frame; `src=1` is the code behind it, which is where every other file starts.
+                renderable = is_markdown(target) or target.suffix.lower() in (".html", ".htm")
+                if renderable and flag("doc"):
+                    self._respond(200, as_html(target), "text/html; charset=utf-8")
+                    return
+                if renderable and not flag("src"):
+                    page = file_page.render_document(
+                        rel, f"/file?doc=1&path={q}", f"/file?src=1&path={q}{at}" + (f"#L{start}" if start else ""),
+                        theme, "markdown" if is_markdown(target) else "html")
+                    self._respond(200, page.encode("utf-8"), "text/html; charset=utf-8")
+                    return
+
+                # A file too long to render whole is cut, and the page says by how much
                 lines = text.split("\n")
-                total = len(lines)
-                truncated = total if total > FILE_VIEW_MAX_LINES else 0
+                truncated = len(lines) if len(lines) > FILE_VIEW_MAX_LINES else 0
                 if truncated:
                     text = "\n".join(lines[:FILE_VIEW_MAX_LINES])
-                body = json.dumps({"path": rel, "text": text, "truncated": truncated},
-                                  ensure_ascii=False).encode("utf-8")
-                self._respond(200, body, "application/json; charset=utf-8")
+                page = file_page.render(rel, text, start, count, theme, truncated,
+                                        f"/file?raw=1&path={q}")
+                self._respond(200, page.encode("utf-8"), "text/html; charset=utf-8")
             elif path == "/explain":
                 # The shareable write-up, shown in the page's Explain tab and openable on its own
                 ref = load_data().get("explain")
