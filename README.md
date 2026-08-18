@@ -77,6 +77,8 @@ Restart Claude Code, then:
 /kaisetu docs/design.md     # review a Markdown document the same way
 /kaisetu-html               # write only the write-up, no diff review
 /kaisetu-list               # list and reopen past reviews (last 7 days)
+/kaisetu-list all           # …the whole history
+/kaisetu-list last month    # …or any period you name
 ```
 
 The scope argument is free-form: commit hashes, ranges, branch names, or plain
