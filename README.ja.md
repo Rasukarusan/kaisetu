@@ -75,7 +75,7 @@ Claude Code を再起動して:
 /kaisetu docs/report.html   # レンダリングされたページ自体をレビュー
 /kaisetu docs/design.md     # Markdown のドキュメントも同じようにレビュー
 /kaisetu-html               # 差分レビュー抜きで、解説HTMLだけを作る
-/kaisetu-list               # 過去のレビューを一覧・再開
+/kaisetu-list               # 過去のレビューを一覧・再開（直近1週間）
 ```
 
 範囲指定は自由記述です。コミットハッシュ・範囲・ブランチ名・普通の言葉、

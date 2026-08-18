@@ -1,6 +1,6 @@
 ---
 name: kaisetu-list
-description: List past kaisetu reviews and re-open the review UI (local server) for the one the user picks. After selection, only start the server; handle comments only after "Finish" is pressed on the page.
+description: List past kaisetu reviews (the last 7 days by default; older ones on request) and re-open the review UI (local server) for the one the user picks. After selection, only start the server; handle comments only after "Finish" is pressed on the page.
 ---
 
 # kaisetu-list
@@ -10,9 +10,20 @@ Reviews are stored at `~/.kaisetu/<repo-name>/<YYYYMMDD-HHMMSS>/review-data.json
 
 ## 1. Collect the list
 
+The list covers the **last 7 days** by default. Older reviews are only listed when the user asks
+for them ("all", "everything", "last month", a date, a repository name…) — then drop the cutoff
+filter and list everything that matches what they asked for.
+
 ```bash
-find ~/.kaisetu -mindepth 3 -maxdepth 3 -name 'review-data.json' | sort -r
+CUTOFF=$(date -v-7d +%Y%m%d 2>/dev/null || date -d '7 days ago' +%Y%m%d)
+ALL=$(find ~/.kaisetu -mindepth 3 -maxdepth 3 -name 'review-data.json' \
+      | awk -F/ '{print $(NF-1) "\t" $0}' | sort -r | cut -f2)
+RECENT=$(echo "$ALL" | awk -F/ -v c="$CUTOFF" '{split($(NF-1),d,"-"); if (d[1] >= c) print}')
 ```
+
+`$RECENT` is the list to show, newest first; `$ALL` is every review, in the same order.
+If `$RECENT` is empty but `$ALL` is not, show the 5 newest of `$ALL` instead and say they are
+older than a week.
 
 For each review, read the following. **Never Read `review-data.json` itself — it contains the full diff.**
 Take display values from the small `meta.json` in the same directory (one Bash call looping with jq
@@ -37,7 +48,9 @@ Present a table, newest first:
 | 2 | … | … | … | ─ open |
 
 - With 4 or fewer candidates, AskUserQuestion may be used. Otherwise show the table and ask for a number.
-- If there are none, say "No review history found" and stop.
+- When reviews older than the cutoff were left out, add one line under the table:
+  "N more from before this week — say the word and I'll list them."
+- If there is no history at all, say "No review history found" and stop.
 
 ## 3. Reopen the selected review
 
