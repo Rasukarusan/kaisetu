@@ -10,12 +10,23 @@ Reviews are stored at `~/.kaisetu/<repo-name>/<YYYYMMDD-HHMMSS>/review-data.json
 
 ## 1. Collect the list
 
-The list covers the **last 7 days** by default. Older reviews are only listed when the user asks
-for them ("all", "everything", "last month", a date, a repository name…) — then drop the cutoff
-filter and list everything that matches what they asked for.
+The list covers the **last 7 days** by default. Anything the user says — as an argument to the
+skill or in the conversation — overrides that window:
+
+| What they say | What to do |
+|---|---|
+| nothing | last 7 days (the default below) |
+| "all", "everything", "全部", "すべて" | drop the cutoff entirely — list `$ALL` |
+| "last month", "30 days", "1ヶ月", "3日" | set `CUTOFF` to that many days back (`date -v-30d`) |
+| "since June", "2026-06-01 から" | set `CUTOFF` to that date, written `YYYYMMDD` |
+| a repository name ("Clonos") | keep the window, `grep` the paths for `/<name>/` |
+| "the Clonos ones, all of them" | combine — no cutoff, filtered by repository |
+
+A long window can list dozens of rows; that is fine when it was asked for, but cap the table at
+30 rows and say how many were cut.
 
 ```bash
-CUTOFF=$(date -v-7d +%Y%m%d 2>/dev/null || date -d '7 days ago' +%Y%m%d)
+CUTOFF=$(date -v-7d +%Y%m%d 2>/dev/null || date -d '7 days ago' +%Y%m%d)   # -v-30d for a month, etc.
 ALL=$(find ~/.kaisetu -mindepth 3 -maxdepth 3 -name 'review-data.json' \
       | awk -F/ '{print $(NF-1) "\t" $0}' | sort -r | cut -f2)
 RECENT=$(echo "$ALL" | awk -F/ -v c="$CUTOFF" '{split($(NF-1),d,"-"); if (d[1] >= c) print}')
@@ -49,7 +60,7 @@ Present a table, newest first:
 
 - With 4 or fewer candidates, AskUserQuestion may be used. Otherwise show the table and ask for a number.
 - When reviews older than the cutoff were left out, add one line under the table:
-  "N more from before this week — say the word and I'll list them."
+  "N more from before this week — `/kaisetu-list all`, or name a period."
 - If there is no history at all, say "No review history found" and stop.
 
 ## 3. Reopen the selected review
